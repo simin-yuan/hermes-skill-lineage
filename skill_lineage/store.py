@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import errno
 import json
+import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -16,6 +18,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterator
+
+logger = logging.getLogger(__name__)
 
 PLUGIN_NAME = "skill-lineage"
 KEY_FILE = "install.key"
@@ -145,18 +149,39 @@ def read_rows(path: Path) -> list[dict]:
 
 # --- per-install key -----------------------------------------------------------------------
 
-def install_key(directory: Path) -> bytes:
-    """32 random bytes created on first use (mode 0600). Never written to the chain."""
+_KEY_HEX = re.compile(r"[0-9a-f]{64}")
+
+
+def install_key_ex(directory: Path) -> tuple[bytes, str]:
+    """(key, reset_reason). The key is 32 random bytes, stored as 64 hex characters (ASCII text, so no
+    platform newline translation can change it), written atomically with mode 0600. ``reset_reason`` is
+    "" normally; when an existing key file is unreadable it is kept as ``install.key.bad-<time>``, a new
+    key is made and the reason is returned so the caller records the break in the chain."""
     path = directory / KEY_FILE
     with locked(path):
+        reason = ""
         if path.exists():
-            data = path.read_bytes()
-            if len(data) == 32:
-                return data
+            try:
+                text = path.read_bytes().decode("ascii").strip()
+            except (OSError, UnicodeDecodeError) as exc:
+                text, reason = "", f"key file unreadable ({type(exc).__name__})"
+            if _KEY_HEX.fullmatch(text):
+                return bytes.fromhex(text), ""
+            reason = reason or f"key file malformed ({path.stat().st_size} bytes)"
+            kept = path.with_name(f"{KEY_FILE}.bad-{utc_now().strftime('%Y%m%dT%H%M%SZ')}")
+            os.replace(path, kept)
+            logger.warning("skill-lineage: %s; kept as %s, new key made — lineage before this point "
+                           "cannot connect to sources recorded after it", reason, kept.name)
         data = secrets.token_bytes(32)
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        tmp = path.with_name(KEY_FILE + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
         try:
-            os.write(fd, data)
+            os.write(fd, (data.hex() + "\n").encode("ascii"))
         finally:
             os.close(fd)
-        return data
+        os.replace(tmp, path)
+        return data, reason
+
+
+def install_key(directory: Path) -> bytes:
+    return install_key_ex(directory)[0]
