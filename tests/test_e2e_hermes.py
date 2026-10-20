@@ -18,10 +18,26 @@ TESTS = Path(__file__).resolve().parent
 REPO = TESTS.parent
 sys.path.insert(0, str(REPO))
 
-if importlib.util.find_spec("run_agent") is None:
+def _hermes_problem() -> str:
+    """Import what the worker imports. A module that is merely findable is not enough: on Python < 3.14
+    Hermes does not install ruamel.yaml (it supports only 3.14), so deeper imports fail."""
+    if importlib.util.find_spec("run_agent") is None:
+        return "Hermes is not importable (run_agent not found)"
+    try:
+        import agent.background_review  # noqa: F401
+        import agent.curator  # noqa: F401
+        import run_agent  # noqa: F401
+    except Exception as exc:  # ImportError or anything an import-time side effect raises
+        hint = (f"; Hermes supports Python 3.14 only, this is {sys.version.split()[0]}"
+                if sys.version_info < (3, 14) else "")
+        return f"Hermes is installed but cannot be imported here ({type(exc).__name__}: {exc}){hint}"
+    return ""
+
+
+if (_problem := _hermes_problem()):
     if os.environ.get("SKILL_LINEAGE_REQUIRE_E2E") == "1":
-        raise RuntimeError("SKILL_LINEAGE_REQUIRE_E2E=1 but Hermes (run_agent) is not importable")
-    pytest.skip("Hermes is not importable; end-to-end tests skipped", allow_module_level=True)
+        raise RuntimeError(_problem)
+    pytest.skip(_problem, allow_module_level=True)
 
 from skill_lineage import chain, graph  # noqa: E402
 
