@@ -1,0 +1,17 @@
+name: skill-lineage
+version: 0.1.0
+author: "Simin (Simon) Yuan"
+requires_hermes: ">=0.22.2"
+description: >-
+  Records where each skill version's content came from — user messages, tool results such as web pages,
+  and skills read before the write — through foreground writes, the background review and curator
+  consolidation, in a hash chain anyone can verify; `hermes skill-lineage descendants <url>` lists every
+  skill a source produced.
+  Disclosure — reads tool results, user messages and skill files to compute keyed hashes; keeps those hashes
+  (no text) for 7 days per session and the lineage chain (hashes and skill names) under
+  plugin-data/skill-lineage; no network; never blocks or changes a tool call.
+provides_hooks:
+  - on_session_start
+  - pre_llm_call
+  - pre_tool_call
+  - post_tool_call
