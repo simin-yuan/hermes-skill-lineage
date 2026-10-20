@@ -18,7 +18,8 @@ DESCRIPTION = (
 
 
 def setup(parser: argparse.ArgumentParser) -> None:
-    sub = parser.add_subparsers(dest="skill_lineage_command", metavar="{trace,descendants,report,verify,head}")
+    sub = parser.add_subparsers(dest="skill_lineage_command", metavar="{status,trace,descendants,report,verify,head}")
+    sub.add_parser("status", help="Is anything being recorded? Version, data folder, newest entries")
     trace = sub.add_parser("trace", help="Where the newest version of a skill came from")
     trace.add_argument("skill")
     trace.add_argument("--weak", action="store_true", help="Also follow context edges (things the session only saw)")
@@ -36,6 +37,8 @@ def make_handler(directory: Callable[[], Path] = store.data_dir) -> Callable[[ar
     def handle(args: argparse.Namespace) -> int:
         command = getattr(args, "skill_lineage_command", None)
         folder = directory()
+        if command == "status":
+            return cmd_status(folder)
         if command == "trace":
             return cmd_trace(folder, args.skill, args.weak)
         if command == "descendants":
@@ -46,7 +49,7 @@ def make_handler(directory: Callable[[], Path] = store.data_dir) -> Callable[[ar
             return verify_report(chain.verify(folder / chain.CHAIN_FILE, args.head))
         if command == "head":
             return cmd_head(folder, args.json)
-        print("usage: hermes skill-lineage {trace,descendants,report,verify,head} ...")
+        print("usage: hermes skill-lineage {status,trace,descendants,report,verify,head} ...")
         return 2
     return handle
 
@@ -128,4 +131,44 @@ def cmd_head(folder: Path, as_json: bool) -> int:
         print(json.dumps({"seq": seq, "hash": digest, "ts": store.iso()}))
     else:
         print(f"seq {seq} hash {digest}")
+    return 0
+
+
+def _manifest_field(name: str) -> str:
+    manifest = Path(__file__).resolve().parents[1] / "plugin.yaml"
+    try:
+        for line in manifest.read_text(encoding="utf-8").splitlines():
+            if line.startswith(name + ":"):
+                return line.split(":", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return "?"
+
+
+def cmd_status(folder: Path) -> int:
+    """Answers "am I being recorded?". This command exists only when Hermes loaded the plugin, so reaching it
+    means the requires_hermes gate passed; a missing command means the plugin was skipped (see plugins doctor)."""
+    import time
+
+    from . import sessions as sessions_mod
+
+    print(f"skill-lineage {_manifest_field('version')} loaded (requires_hermes {_manifest_field('requires_hermes')} "
+          "satisfied, or Hermes would not have loaded it)")
+    print(f"data folder: {folder}")
+    path = folder / chain.CHAIN_FILE
+    rows = store.read_rows(path)
+    if not rows:
+        print("chain: empty — nothing recorded yet (a skill write through skill_manage creates the first entry)")
+    else:
+        last = rows[-1]
+        versions = [r for r in rows if r.get("kind") == "version"]
+        print(f"chain: {len(rows)} entries, head seq {last.get('seq')} at {last.get('ts')}; "
+              f"{len(versions)} skill versions; last skill write {versions[-1]['ts'] if versions else 'none'}")
+    folder_s = folder / sessions_mod.SESSIONS_DIR
+    files = sorted(folder_s.glob("*.jsonl"), key=lambda p: p.stat().st_mtime) if folder_s.exists() else []
+    if files:
+        age = time.time() - files[-1].stat().st_mtime
+        print(f"sessions: {len(files)} files, newest source or read recorded {int(age // 60)} min ago")
+    else:
+        print("sessions: none — no user message or tool result recorded yet in this profile")
     return 0
