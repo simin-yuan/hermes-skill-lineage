@@ -1,0 +1,6 @@
+name: fixture-web
+version: 0.0.1
+author: "Simin (Simon) Yuan"
+description: Test fixture only. Serves canned pages through a fetch_page tool; never shipped.
+provides_tools:
+  - fetch_page
