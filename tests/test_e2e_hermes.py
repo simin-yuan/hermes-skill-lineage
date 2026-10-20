@@ -25,6 +25,27 @@ if importlib.util.find_spec("run_agent") is None:
 
 from skill_lineage import chain, graph  # noqa: E402
 
+
+def _version_gate() -> str:
+    """Hermes skips a plugin whose requires_hermes is not met, silently for the agent. Turn that into a
+    clear skip here instead of 'chain file not found' failures. Private Hermes internals: tests only."""
+    try:
+        from hermes_cli.plugins_manifest import running_hermes_version, version_satisfies
+    except ImportError:
+        return ""
+    spec = next((line.split(":", 1)[1].strip().strip('"') for line in
+                 (REPO / "plugin.yaml").read_text(encoding="utf-8").splitlines() if line.startswith("requires_hermes:")), "")
+    running = running_hermes_version()
+    if spec and not version_satisfies(spec, running):
+        return f"needs Hermes {spec}, running {running}: Hermes would skip the plugin"
+    return ""
+
+
+if (_gate := _version_gate()):
+    if os.environ.get("SKILL_LINEAGE_REQUIRE_E2E") == "1":
+        raise RuntimeError(_gate)
+    pytest.skip(_gate, allow_module_level=True)
+
 pytestmark = pytest.mark.e2e
 _cache: dict = {}
 
