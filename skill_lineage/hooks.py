@@ -156,9 +156,18 @@ class Tracker:
 
     # --- recording -------------------------------------------------------------------------
 
+    def _key(self, directory: Path) -> bytes:
+        """The install key; a reset (unreadable key file) is recorded in the chain, never silent. Session
+        files hashed with the old key can no longer match anything, so they are removed in the same step."""
+        key, reason = store.install_key_ex(directory)
+        if reason:
+            removed = sessions.prune(directory, retention_days=0, cap_bytes=0)
+            self._append(directory, [{"kind": "key_reset", "reason": reason, "session_files_removed": removed}])
+        return key
+
     def _record_source(self, session_id: str, cls: str, tool: str, text: str, urls: set[str]) -> None:
         directory = self._directory()
-        key = store.install_key(directory)
+        key = self._key(directory)
         node = f"src:{cls}:{textfeat.keyed_hex(key, text, 16)}"
         strings = textfeat.anchor_strings(text)
         anchors = {textfeat.keyed_hex(key, s) for s in strings}
@@ -180,7 +189,7 @@ class Tracker:
         if fp is None:
             return
         directory = self._directory()
-        key = store.install_key(directory)
+        key = self._key(directory)
         body = "\n".join(texts[rel] for rel in sorted(texts))
         sessions.record(directory, session_id, sessions.Seen(
             kind="read", node=f"skill:{name}@{fp}", cls="skill", skill=name,
@@ -192,7 +201,7 @@ class Tracker:
         if not names:
             return
         directory = self._directory()
-        key = store.install_key(directory)
+        key = self._key(directory)
         seen = sessions.load(directory, session_id) if session_id else []
         common = edges.AnchorCounts(directory).common()
         bodies: list[dict] = []

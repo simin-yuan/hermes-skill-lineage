@@ -164,6 +164,10 @@ def cmd_status(folder: Path) -> int:
         versions = [r for r in rows if r.get("kind") == "version"]
         print(f"chain: {len(rows)} entries, head seq {last.get('seq')} at {last.get('ts')}; "
               f"{len(versions)} skill versions; last skill write {versions[-1]['ts'] if versions else 'none'}")
+        resets = [r for r in rows if r.get("kind") == "key_reset"]
+        if resets:
+            print(f"WARNING: hashing key was reset {len(resets)} time(s), last at seq {resets[-1].get('seq')} "
+                  f"({resets[-1].get('reason')}): sources seen before a reset cannot link to writes after it")
     folder_s = folder / sessions_mod.SESSIONS_DIR
     files = sorted(folder_s.glob("*.jsonl"), key=lambda p: p.stat().st_mtime) if folder_s.exists() else []
     if files:
