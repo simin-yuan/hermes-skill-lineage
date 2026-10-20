@@ -18,20 +18,43 @@ TESTS = Path(__file__).resolve().parent
 REPO = TESTS.parent
 sys.path.insert(0, str(REPO))
 
+PROBE = r"""
+import json, sys
+from pathlib import Path
+out = {"problem": ""}
+try:
+    import agent.background_review, agent.curator, run_agent  # what the worker imports
+    from hermes_cli.plugins_manifest import running_hermes_version, version_satisfies
+    spec = next((l.split(":", 1)[1].strip().strip('"') for l in
+                 Path(sys.argv[1]).read_text(encoding="utf-8").splitlines() if l.startswith("requires_hermes:")), "")
+    running = running_hermes_version()
+    if spec and not version_satisfies(spec, running):
+        out["problem"] = f"needs Hermes {spec}, running {running}: Hermes would skip the plugin"
+except BaseException as exc:  # SystemExit too: importing run_agent may relaunch the process
+    out["problem"] = f"Hermes cannot be imported here ({type(exc).__name__}: {exc})"
+print("PROBE" + json.dumps(out))
+"""
+
+
 def _hermes_problem() -> str:
-    """Import what the worker imports. A module that is merely findable is not enough: on Python < 3.14
-    Hermes does not install ruamel.yaml (it supports only 3.14), so deeper imports fail."""
+    """Why the end-to-end tests cannot run here, or "". Hermes runs on Python 3.14 only, and importing
+    run_agent can relaunch the process (hermes_bootstrap), so nothing Hermes is imported in this process:
+    a child process imports what the worker imports and reports back."""
+    if sys.version_info < (3, 14):
+        return f"Hermes runs on Python 3.14 only (pyproject.toml); this is {sys.version.split()[0]}"
     if importlib.util.find_spec("run_agent") is None:
         return "Hermes is not importable (run_agent not found)"
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
     try:
-        import agent.background_review  # noqa: F401
-        import agent.curator  # noqa: F401
-        import run_agent  # noqa: F401
-    except Exception as exc:  # ImportError or anything an import-time side effect raises
-        hint = (f"; Hermes supports Python 3.14 only, this is {sys.version.split()[0]}"
-                if sys.version_info < (3, 14) else "")
-        return f"Hermes is installed but cannot be imported here ({type(exc).__name__}: {exc}){hint}"
-    return ""
+        proc = subprocess.run([sys.executable, "-c", PROBE, str(REPO / "plugin.yaml")], capture_output=True,
+                              text=True, timeout=300, env=env, cwd=str(TESTS))
+    except subprocess.TimeoutExpired:
+        return "Hermes import probe timed out"
+    line = next((l for l in proc.stdout.splitlines() if l.startswith("PROBE")), "")
+    if not line:
+        tail = (proc.stderr.strip().splitlines() or ["no output"])[-1]
+        return f"Hermes import probe exited {proc.returncode}: {tail}"
+    return json.loads(line[len("PROBE"):])["problem"]
 
 
 if (_problem := _hermes_problem()):
@@ -41,26 +64,6 @@ if (_problem := _hermes_problem()):
 
 from skill_lineage import chain, graph  # noqa: E402
 
-
-def _version_gate() -> str:
-    """Hermes skips a plugin whose requires_hermes is not met, silently for the agent. Turn that into a
-    clear skip here instead of 'chain file not found' failures. Private Hermes internals: tests only."""
-    try:
-        from hermes_cli.plugins_manifest import running_hermes_version, version_satisfies
-    except ImportError:
-        return ""
-    spec = next((line.split(":", 1)[1].strip().strip('"') for line in
-                 (REPO / "plugin.yaml").read_text(encoding="utf-8").splitlines() if line.startswith("requires_hermes:")), "")
-    running = running_hermes_version()
-    if spec and not version_satisfies(spec, running):
-        return f"needs Hermes {spec}, running {running}: Hermes would skip the plugin"
-    return ""
-
-
-if (_gate := _version_gate()):
-    if os.environ.get("SKILL_LINEAGE_REQUIRE_E2E") == "1":
-        raise RuntimeError(_gate)
-    pytest.skip(_gate, allow_module_level=True)
 
 pytestmark = pytest.mark.e2e
 _cache: dict = {}
