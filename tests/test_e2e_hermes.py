@@ -35,8 +35,11 @@ def run(scenario, stream, tmp_path_factory, bridge=False):
         work = tmp_path_factory.mktemp(f"{scenario}-{stream}")
         spec, out = work / "spec.json", work / "out.json"
         spec.write_text(json.dumps({"scenario": scenario, "stream": stream, "bridge": bridge}), encoding="utf-8")
+        # The worker is a separate process: hand it exactly the import path this pytest run has, so a
+        # Hermes checkout found through PYTHONPATH (not only an installed one) is found there too.
+        env = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
         proc = subprocess.run([sys.executable, str(TESTS / "e2e_worker.py"), str(spec), str(out)],
-                              capture_output=True, text=True, timeout=600)
+                              capture_output=True, text=True, timeout=600, env=env)
         assert proc.returncode == 0, proc.stdout[-3000:] + proc.stderr[-3000:]
         result = json.loads(out.read_text(encoding="utf-8"))
         assert result["stream_flags"] == [stream]
