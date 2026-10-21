@@ -111,9 +111,80 @@ def install(home: Path) -> None:
     shutil.copytree(TESTS / "fixture_web", home / "plugins" / "fixture-web", ignore=shutil.ignore_patterns("__pycache__"))
 
 
+def run_real_model(spec: dict, out_path: Path) -> None:
+    """Drive a real model through the same fresh-HERMES_HOME setup as the scripted scenarios.
+
+    Differences from the scripted path: the model is a real provider reached through
+    ``MeteringProxy`` (so usage is measured, not assumed), and the user message / pages come from
+    the spec instead of being hardcoded. Nothing is retried: a run that writes no skill is data.
+    """
+    from metering_proxy import MeteringProxy
+
+    home = Path(tempfile.mkdtemp(prefix="sl-real-"))
+    os.environ["HERMES_HOME"] = str(home)
+    os.environ.pop("SKILL_LINEAGE_DATA_DIR", None)
+    os.environ["FIXTURE_PAGES"] = json.dumps(spec["pages"])
+    install(home)
+
+    api_key = os.environ["DEEPSEEK_API_KEY"]
+    model = spec.get("model", "deepseek-v4-flash")
+    scenario = spec["scenario"]
+
+    with MeteringProxy("https://api.deepseek.com", api_key, model) as proxy:
+        (home / "config.yaml").write_text(
+            "model:\n"
+            f"  default: {model}\n  provider: custom\n  base_url: {proxy.base_url}\n  api_key: loopback\n"
+            "  streaming: false\n"
+            "plugins:\n  enabled:\n    - skill-lineage\n    - fixture-web\n"
+            "tools:\n  tool_search:\n    enabled: \"off\"\n", encoding="utf-8")
+        from run_agent import AIAgent
+
+        agent = AIAgent(model=model, provider="custom", base_url=proxy.base_url, api_key="loopback",
+                        quiet_mode=True, skip_context_files=True, skip_background_review=True,
+                        enabled_toolsets=["skills", "fixture_web"])
+        error = None
+        try:
+            agent.run_conversation(spec["user"])
+            if scenario == "R2":
+                from agent.background_review import (prepare_background_review_run,
+                                                     spawn_background_review_thread)
+                run = prepare_background_review_run(agent)
+                target, _ = spawn_background_review_thread(agent, list(agent._session_messages),
+                                                           review_memory=True, review_skills=True,
+                                                           review_run=run)
+                target()
+            if scenario == "R3":
+                from agent.curator import _run_llm_review
+                _run_llm_review("Curator pass: consolidate the skill library.")
+        except Exception as exc:                     # recorded, never retried
+            error = f"{type(exc).__name__}: {exc}"
+        finally:
+            try:
+                agent.close()
+            except Exception:
+                pass
+        usage = proxy.totals()
+
+    data = home / "plugin-data" / "skill-lineage"
+    chain_rows = [json.loads(l) for l in (data / "chain.jsonl").read_text(encoding="utf-8").splitlines()] \
+        if (data / "chain.jsonl").exists() else []
+    skills = {}
+    skills_root = home / "skills"
+    if skills_root.exists():
+        for path in skills_root.rglob("SKILL.md"):
+            skills[path.parent.name] = path.read_text(encoding="utf-8", errors="replace")
+    out = {"scenario": scenario, "run_id": spec.get("run_id"), "user": spec["user"],
+           "pages": spec["pages"], "skills": skills, "chain": chain_rows,
+           "data_dir": str(data), "home": str(home), "usage": usage, "error": error}
+    out_path.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def main() -> None:
     spec = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     out_path = Path(sys.argv[2])
+    if spec.get("real_model"):
+        run_real_model(spec, out_path)
+        return
     scenario = spec["scenario"]
     home = Path(tempfile.mkdtemp(prefix="sl-e2e-"))
     os.environ["HERMES_HOME"] = str(home)
