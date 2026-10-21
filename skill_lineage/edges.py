@@ -132,21 +132,26 @@ def compute(key: bytes, added: str, before_all: str, seen: list[Seen], common: s
     added_an = textfeat.anchors(key, added) - common
     edges: list[Edge] = []
     explained: set[str] = set(textfeat.anchors(key, before_all))
-    saw_external = False
+    saw_external = any(item.cls == "ext" for item in seen)
+    # Discriminative overlap: text that two sources of the session both contain cannot tell which one
+    # it came from, so between sources (pages, tool results, user messages) only overlap unique to one
+    # source counts. Skill reads are not part of this: a skill read in the session may itself derive
+    # from a page, and subtracting it would cut the page's own link.
+    sources = [item for item in seen if item.kind != "read"]
     for item in seen:
         prefix = "read-" if item.kind == "read" else ""
-        if item.cls == "ext":
-            saw_external = True
-        if item.cls == "user":
-            explained |= item.anchors
-        sh = len(added_sh & item.shingles)
-        an = len(added_an & item.anchors)
+        explained |= item.anchors  # a token found in anything the session saw has a traceable origin
+        own_sh, own_an = item.shingles, item.anchors
+        if item.kind != "read":
+            others = [o for o in sources if o is not item]
+            own_sh = own_sh - set().union(*(o.shingles for o in others)) if others else own_sh
+            own_an = own_an - set().union(*(o.anchors for o in others)) if others else own_an
+        sh = len(added_sh & own_sh)
+        an = len(added_an & own_an)
         if sh >= STRONG_MIN:
             edges.append(Edge(prefix + "strong", item.node, sh, an))
-            explained |= item.anchors
         elif an >= 1:
             edges.append(Edge(prefix + "anchor", item.node, sh, an))
-            explained |= item.anchors
         elif item.kind == "read" or item.cls in CONTEXT_CLASSES:
             edges.append(Edge(prefix + "context", item.node))
     orphans = len(added_an - explained) if saw_external else 0
