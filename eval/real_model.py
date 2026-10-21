@@ -182,7 +182,13 @@ def run_one(run: dict, workdir: Path) -> dict:
     result = json.loads(out_path.read_text(encoding="utf-8"))
     row = measure(run, result)
     row["seconds"] = seconds
-    row["home"] = result.get("home")
+    # The raw per-run record is published. Keep it free of the local temp path and username:
+    # measure() above already used the real path, so scrubbing afterwards costs nothing.
+    row["home"] = "<per-run temp HERMES_HOME>"
+    cleaned = dict(result)
+    cleaned["data_dir"] = "<per-run temp HERMES_HOME>/plugin-data/skill-lineage"
+    cleaned["home"] = "<per-run temp HERMES_HOME>"
+    out_path.write_text(json.dumps(cleaned, indent=2, ensure_ascii=False), encoding="utf-8")
     return row
 
 
