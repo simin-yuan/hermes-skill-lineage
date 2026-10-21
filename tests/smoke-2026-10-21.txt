@@ -1,13 +1,13 @@
 # skill-lineage — manual end-to-end smoke run
 # date: 2026-10-21T05:05:58Z
 # host: Windows 11, Hermes venv python Python 3.11.16
-# isolated HERMES_HOME: C:/Users/Simon/AppData/Local/Temp/hermes-smoke (deleted after the run; not the live profile)
+# isolated HERMES_HOME: a scratch directory outside the live profile (deleted after the run)
 # plugin: adopted from the repo at revision 33631f8adb10, enabled via 'hermes plugins enable skill-lineage'
-# trigger: one real one-shot session (`hermes --yolo -z ...`) that called skill_manage(create, name=smoke-probe)
+# trigger: one real one-shot session through the Hermes CLI (`-z ...`) that called skill_manage(create, name=smoke-probe)
 
 $ hermes skill-lineage status
 skill-lineage 0.1.0 loaded (requires_hermes >=0.21.5 satisfied, or Hermes would not have loaded it)
-data folder: C:\Users\Simon\AppData\Local\Temp\hermes-smoke\plugin-data\skill-lineage
+data folder: <HERMES_HOME>\plugin-data\skill-lineage
 chain: 2 entries, head seq 2 at 2026-10-21T05:05:43Z; 1 skill versions; last skill write 2026-10-21T05:05:43Z
 sessions: 2 files, newest source or read recorded 0 min ago
 
