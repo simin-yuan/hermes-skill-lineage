@@ -30,6 +30,17 @@ _COMMAND = re.compile(r"(?:^|[\s;|&`$(])(" + "|".join(re.escape(c) for c in _COM
 _INSTALL = re.compile(r"\b(pip3?|uv\s+pip|npm|pnpm|yarn|gem|cargo|go|brew|apt(?:-get)?|choco|winget)\s+"
                       r"(?:install|add|get)\s+((?:[^\s;|&`]+\s*){1,4})", re.IGNORECASE)
 _TRAILING = ".,;:!?\"')]}>`"
+_PACKAGE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9._@/\-\[\],=<>!~+]*$")
+_PLAIN_WORDS = frozenset(("and or then to the a an with from before after so in on of for if when that this "
+                          "it is be as at by into your our their run use set it's").split())
+
+
+def _operative_arg(arg: str) -> bool:
+    """A command argument worth anchoring: looks like a URL, path, file, host, variable or option value —
+    not a plain English word that happens to follow the command ("| bash so the caches ...")."""
+    if not arg or arg.lower() in _PLAIN_WORDS:
+        return False
+    return bool(re.search(r"[/.:$~=@\\]", arg)) or bool(re.search(r"\w-\w|\d", arg))
 
 
 def keyed(key: bytes, text: str, size: int = 8) -> bytes:
@@ -83,14 +94,17 @@ def anchor_strings(text: str) -> set[str]:
         command = match.group(1).lower()
         args = [_clean(a) for a in match.group(2).split()]
         target = next((a for a in args if a and not a.startswith("-")), "")
-        if target:
+        if _operative_arg(target):
             found.add(f"cmd:{command} {target.lower()}")
     for match in _INSTALL.finditer(text):
         manager = re.sub(r"\s+", " ", match.group(1).lower())
         for package in match.group(2).split():
             package = _clean(package)
-            if package and not package.startswith("-"):
-                found.add(f"pkg:{manager} {package.lower()}")
+            if package.startswith("-"):
+                continue  # an option such as --upgrade
+            if package.lower() in _PLAIN_WORDS or not _PACKAGE.match(package):
+                break  # the package list ended ("pip install foo and export ...")
+            found.add(f"pkg:{manager} {package.lower()}")
     return found
 
 

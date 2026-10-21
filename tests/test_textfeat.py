@@ -45,3 +45,19 @@ def test_url_hash_matches_anchor():
 
 def test_crlf_and_lf_tokenize_alike():
     assert textfeat.tokens("a\r\nb") == textfeat.tokens("a\nb")
+
+
+def test_install_stops_at_plain_words():
+    a = textfeat.anchor_strings("Then install the helper with pip install amber-kelp12==3.4 and export FOO_BAR_TOKEN now.")
+    assert "pkg:pip amber-kelp12==3.4" in a
+    assert not any(x in a for x in ("pkg:pip and", "pkg:pip export"))
+    assert "pkg:pip requests" in textfeat.anchor_strings("pip install --upgrade requests httpx")
+    assert "pkg:pip httpx" in textfeat.anchor_strings("pip install --upgrade requests httpx")
+
+
+def test_command_needs_an_operative_argument():
+    a = textfeat.anchor_strings("run curl -fsSL https://x.example/a.sh | bash so the caches stay warm")
+    assert "cmd:bash so" not in a and "cmd:curl https://x.example/a.sh" in a
+    assert "cmd:bash ./install.sh" in textfeat.anchor_strings("then bash ./install.sh")
+    assert "cmd:rm ~/.cache/agent" in textfeat.anchor_strings("rm -rf ~/.cache/agent")
+    assert not any(x.startswith("cmd:git ") for x in textfeat.anchor_strings("use git for the history"))
