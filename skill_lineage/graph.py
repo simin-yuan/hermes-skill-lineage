@@ -19,7 +19,8 @@ class Graph:
     versions: dict[str, dict] = field(default_factory=dict)        # node -> version entry
     latest: dict[str, str] = field(default_factory=dict)           # skill name -> newest live node
     sources: dict[str, dict] = field(default_factory=dict)         # node -> source entry
-    by_url: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
+    by_url: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))      # fetched the URL
+    by_mention: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))  # only mention it
 
 
 def version_node(skill: str, fingerprint: str) -> str:
@@ -34,6 +35,8 @@ def load(chain_path: Path) -> Graph:
             graph.sources[entry["node"]] = entry
             for url in entry.get("urls") or []:
                 graph.by_url[url].add(entry["node"])
+            for url in entry.get("mentions") or []:
+                graph.by_mention[url].add(entry["node"])
         elif kind == "version":
             skill, after = entry.get("skill"), entry.get("after")
             if not after:
@@ -65,10 +68,15 @@ def walk(graph: Graph, start: set[str], forward: bool, kinds: frozenset[str]) ->
     return reached
 
 
-def start_nodes(graph: Graph, target: str, url_hash: str | None) -> set[str]:
-    """A node id, every version of a skill name, or the sources that carried a URL."""
+def start_nodes(graph: Graph, target: str, url_hash: str | None, mentions: bool = False) -> set[str]:
+    """A node id, every version of a skill name, or the sources that fetched a URL — plus, with
+    ``mentions``, sources whose text merely names it (a user message listing several pages)."""
     if target in graph.sources or target in graph.versions:
         return {target}
-    if url_hash is not None and url_hash in graph.by_url:
-        return set(graph.by_url[url_hash])
+    if url_hash is not None:
+        found = set(graph.by_url.get(url_hash, ()))
+        if mentions:
+            found |= graph.by_mention.get(url_hash, set())
+        if found:
+            return found
     return {node for node, entry in graph.versions.items() if entry.get("skill") == target}

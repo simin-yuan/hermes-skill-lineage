@@ -171,11 +171,12 @@ class Tracker:
         node = f"src:{cls}:{textfeat.keyed_hex(key, text, 16)}"
         strings = textfeat.anchor_strings(text)
         anchors = {textfeat.keyed_hex(key, s) for s in strings}
-        url_hashes = {textfeat.keyed_hex(key, s) for s in strings if s.startswith("url:")}
-        url_hashes |= {textfeat.url_hash(key, u) for u in urls}
+        url_hashes = {textfeat.url_hash(key, u) for u in urls}  # fetched by this call
+        mentioned = {textfeat.keyed_hex(key, s) for s in strings if s.startswith("url:")} - url_hashes
         shingles = textfeat.shingles(key, text)
         sessions.record(directory, session_id, sessions.Seen(
-            kind="src", node=node, cls=cls, tool=tool, shingles=shingles, anchors=anchors, urls=url_hashes))
+            kind="src", node=node, cls=cls, tool=tool, shingles=shingles, anchors=anchors, urls=url_hashes,
+            mentions=mentioned))
         if cls in edges.CONTEXT_CLASSES:
             edges.AnchorCounts(directory).add_source(node, anchors, shingles)
 
@@ -223,7 +224,8 @@ class Tracker:
             for item in seen:
                 if item.kind == "src" and any(r["from"] == item.node for r in edge_rows):
                     bodies.append({"kind": "source", "node": item.node, "cls": item.cls, "tool": item.tool,
-                                   "session": sessions.session_tag(session_id), "urls": sorted(item.urls)})
+                                   "session": sessions.session_tag(session_id), "urls": sorted(item.urls),
+                                   "mentions": sorted(item.mentions)})
             version = {"kind": "version", "skill": name, "before": before_fp, "after": after_fp,
                        "session": sessions.session_tag(session_id), "call": short(call), "tool": WRITE_TOOL,
                        "edges": edge_rows, "orphans": orphans}

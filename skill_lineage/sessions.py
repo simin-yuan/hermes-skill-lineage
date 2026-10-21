@@ -43,7 +43,8 @@ class Seen:
     cls: str
     shingles: set[bytes] = field(default_factory=set)
     anchors: set[str] = field(default_factory=set)
-    urls: set[str] = field(default_factory=set)
+    urls: set[str] = field(default_factory=set)      # URLs this tool call fetched (from its arguments)
+    mentions: set[str] = field(default_factory=set)  # URLs that only appear in the text
     tool: str = ""
     skill: str = ""
 
@@ -57,7 +58,8 @@ def _file(directory: Path, session_id: str) -> Path:
 def record(directory: Path, session_id: str, seen: Seen) -> None:
     path = _file(directory, session_id)
     row = {"t": seen.kind, "node": seen.node, "cls": seen.cls, "tool": seen.tool, "skill": seen.skill,
-           "sh": pack(seen.shingles), "an": sorted(seen.anchors), "url": sorted(seen.urls), "ts": store.iso()}
+           "sh": pack(seen.shingles), "an": sorted(seen.anchors), "url": sorted(seen.urls), "men": sorted(seen.mentions),
+           "ts": store.iso()}
     with store.locked(path):
         store.append_rows(path, [row])
 
@@ -72,7 +74,8 @@ def load(directory: Path, session_id: str) -> list[Seen]:
             continue
         out[node] = Seen(kind=str(row.get("t") or "src"), node=node, cls=str(row.get("cls") or ""),
                          shingles=unpack(str(row.get("sh") or "")), anchors=set(row.get("an") or []),
-                         urls=set(row.get("url") or []), tool=str(row.get("tool") or ""),
+                         urls=set(row.get("url") or []), mentions=set(row.get("men") or []),
+                         tool=str(row.get("tool") or ""),
                          skill=str(row.get("skill") or ""))
     return list(out.values())
 

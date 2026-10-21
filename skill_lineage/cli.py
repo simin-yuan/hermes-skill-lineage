@@ -26,6 +26,8 @@ def setup(parser: argparse.ArgumentParser) -> None:
     desc = sub.add_parser("descendants", help="Every skill version that came from a source, URL or skill")
     desc.add_argument("target", help="a source node id, a URL the agent read, or a skill name")
     desc.add_argument("--weak", action="store_true", help="Also follow context edges")
+    desc.add_argument("--mentions", action="store_true",
+                      help="For a URL, also start from sources that only mention it (e.g. a user message)")
     sub.add_parser("report", help="Skill versions with operative tokens of no traceable origin")
     verify = sub.add_parser("verify", help="Check the chain; --head checks it against a hash recorded elsewhere")
     verify.add_argument("--head", default=None)
@@ -42,7 +44,7 @@ def make_handler(directory: Callable[[], Path] = store.data_dir) -> Callable[[ar
         if command == "trace":
             return cmd_trace(folder, args.skill, args.weak)
         if command == "descendants":
-            return cmd_descendants(folder, args.target, args.weak)
+            return cmd_descendants(folder, args.target, args.weak, getattr(args, "mentions", False))
         if command == "report":
             return cmd_report(folder)
         if command == "verify":
@@ -93,7 +95,7 @@ def cmd_trace(folder: Path, skill: str, weak: bool) -> int:
     return 0
 
 
-def cmd_descendants(folder: Path, target: str, weak: bool) -> int:
+def cmd_descendants(folder: Path, target: str, weak: bool, mentions: bool = False) -> int:
     g = graph.load(folder / chain.CHAIN_FILE)
     url = None
     if target.lower().startswith(("http://", "https://")):
@@ -103,7 +105,7 @@ def cmd_descendants(folder: Path, target: str, weak: bool) -> int:
                   "`hermes skill-lineage status`. Source node ids and skill names still work.")
             return 1
         url = textfeat.url_hash(key, target)
-    start = graph.start_nodes(g, target, url)
+    start = graph.start_nodes(g, target, url, mentions)
     if not start:
         print(f"nothing recorded for {target!r}")
         return 1
