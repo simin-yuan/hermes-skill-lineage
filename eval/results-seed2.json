@@ -1,0 +1,152 @@
+{
+ "seed": 2,
+ "per_label": 100,
+ "scenarios": 600,
+ "chain_intact": true,
+ "modes": {
+  "strong-only": {
+   "labels": {
+    "D1": {
+     "linked": 200,
+     "n": 200,
+     "rate": 1.0
+    },
+    "D2": {
+     "linked": 0,
+     "n": 100,
+     "rate": 0.0
+    },
+    "D3": {
+     "linked": 0,
+     "n": 100,
+     "rate": 0.0
+    },
+    "D4": {
+     "linked": 0,
+     "n": 100,
+     "rate": 0.0
+    },
+    "D4-other": {
+     "linked": 100,
+     "n": 100,
+     "rate": 1.0
+    },
+    "N1": {
+     "linked": 6,
+     "n": 400,
+     "rate": 0.015
+    },
+    "N2": {
+     "linked": 0,
+     "n": 200,
+     "rate": 0.0
+    },
+    "N3": {
+     "linked": 0,
+     "n": 200,
+     "rate": 0.0
+    }
+   },
+   "tp": 300,
+   "fp": 6,
+   "fn": 200,
+   "precision": 0.98
+  },
+  "default (strong+anchor)": {
+   "labels": {
+    "D1": {
+     "linked": 200,
+     "n": 200,
+     "rate": 1.0
+    },
+    "D2": {
+     "linked": 100,
+     "n": 100,
+     "rate": 1.0
+    },
+    "D3": {
+     "linked": 0,
+     "n": 100,
+     "rate": 0.0
+    },
+    "D4": {
+     "linked": 100,
+     "n": 100,
+     "rate": 1.0
+    },
+    "D4-other": {
+     "linked": 100,
+     "n": 100,
+     "rate": 1.0
+    },
+    "N1": {
+     "linked": 6,
+     "n": 400,
+     "rate": 0.015
+    },
+    "N2": {
+     "linked": 0,
+     "n": 200,
+     "rate": 0.0
+    },
+    "N3": {
+     "linked": 0,
+     "n": 200,
+     "rate": 0.0
+    }
+   },
+   "tp": 500,
+   "fp": 6,
+   "fn": 0,
+   "precision": 0.988
+  },
+  "record-everything": {
+   "labels": {
+    "D1": {
+     "linked": 200,
+     "n": 200,
+     "rate": 1.0
+    },
+    "D2": {
+     "linked": 100,
+     "n": 100,
+     "rate": 1.0
+    },
+    "D3": {
+     "linked": 100,
+     "n": 100,
+     "rate": 1.0
+    },
+    "D4": {
+     "linked": 100,
+     "n": 100,
+     "rate": 1.0
+    },
+    "D4-other": {
+     "linked": 100,
+     "n": 100,
+     "rate": 1.0
+    },
+    "N1": {
+     "linked": 400,
+     "n": 400,
+     "rate": 1.0
+    },
+    "N2": {
+     "linked": 200,
+     "n": 200,
+     "rate": 1.0
+    },
+    "N3": {
+     "linked": 200,
+     "n": 200,
+     "rate": 1.0
+    }
+   },
+   "tp": 500,
+   "fp": 800,
+   "fn": 0,
+   "precision": 0.385
+  }
+ }
+}

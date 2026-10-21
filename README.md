@@ -67,8 +67,8 @@ against a local fake model server: foreground writes, the background review fork
 curator consolidation and the Tool Search bridge) runs on 3.14 and skips with a
 printed reason elsewhere. The plugin code and unit tests are standard-library only.
 
-Measured on 2026-10-21 against Hermes `3166d61`: Python 3.14 **56 passed**;
-Python 3.11 **48 passed, 1 skipped** (the end-to-end module). Earlier, on `33631f8`
+Measured on 2026-10-21 against Hermes `3166d61`: Python 3.14 **59 passed**;
+Python 3.11 **51 passed, 1 skipped** (the end-to-end module). Earlier, on `33631f8`
 with Hermes `e06df9c2ea` on Windows: 46 passed, 1 skipped. `hermes plugins validate`
 passes with no warnings.
 
@@ -113,9 +113,27 @@ shipping agent. Neighbouring work, and how this differs:
 
 What is specific here: it runs on Hermes' real skill lifecycle — foreground writes,
 the background review fork and curator consolidation — and its `anchor` links target
-paraphrased payloads that keep their operative tokens. How often `strong`, `anchor`
-and `context` tracing are right is being measured; numbers will be added here with
-their sample sizes, not before.
+paraphrased payloads that keep their operative tokens.
+
+## Evaluation (synthetic, so far)
+
+`python eval/run_eval.py --seed 2 --per-label 100` feeds 600 generated scenarios through
+the plugin's hooks and checks every (page, skill) pair against a label fixed when the
+scenario was built. Seed 1 was used while developing; seed 2 is the held-out set below.
+Full output: `eval/results-seed2.json`.
+
+| tracing mode | verbatim | paraphrase, operative token kept | paraphrase, no token | 2 hops via curator | unrelated page | shared boilerplate | user-dictated rule | precision |
+|---|---|---|---|---|---|---|---|---|
+| strong only | 200/200 | 0/100 | 0/100 | 0/100 | 6/400 | 0/200 | 0/200 | 0.980 |
+| strong + anchor (default) | 200/200 | 100/100 | 0/100 | 100/100 | 6/400 | 0/200 | 0/200 | 0.988 |
+| everything seen in the session | 200/200 | 100/100 | 100/100 | 100/100 | 400/400 | 200/200 | 200/200 | 0.385 |
+
+Read this with its limits: the pages and paraphrases are generated from templates, and
+the "operative token kept" paraphrases keep their token by construction — whether a real
+model's rewrite keeps it is a separate measurement, not yet run. A paraphrase with no
+operative token is not traced by default (0/100); following `context` links finds it,
+at the cost shown in the last row. The 6 unrelated-page links are pairs of generated pages
+that really share sentences (7 pairs in this set share 3 or more 8-word runs).
 
 ## Disclosure
 
