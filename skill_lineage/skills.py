@@ -1,7 +1,7 @@
 """Where a skill lives, its fingerprint, and its text.
 
-Skills are found by scanning ``$HERMES_HOME/skills``; nothing private from the Hermes
-package is imported, so a release bump cannot break the lookup (catalog rule 9).
+Skills are found through Hermes' public skill API (``tools.skills_tool.skill_search_dirs`` /
+``locate_skill``); outside Hermes (unit tests) a plain search under ``$HERMES_HOME/skills`` is used.
 """
 
 from __future__ import annotations
@@ -14,6 +14,16 @@ from typing import Callable, Optional
 
 JUNK = {".DS_Store", "Thumbs.db", "desktop.ini"}
 MAX_TEXT_BYTES = 2 * 1024 * 1024  # per file read for comparison; larger files are fingerprinted only
+
+
+def _hermes_locate(name: str) -> Optional[Path]:
+    from tools.skills_tool import locate_skill, skill_search_dirs
+
+    roots, _active = skill_search_dirs()
+    error, skill_dir, skill_md = locate_skill(name, None, roots)
+    if error or skill_md is None or skill_dir is None:
+        return None
+    return Path(skill_dir)
 
 
 def _plain_locate(name: str) -> Optional[Path]:
@@ -35,7 +45,10 @@ def locate(name: str) -> Optional[Path]:
     """Live directory of skill ``name`` or None (missing, archived, ambiguous)."""
     if not name:
         return None
-    return _plain_locate(name)
+    try:
+        return _hermes_locate(name)
+    except ImportError:
+        return _plain_locate(name)
 
 
 Locator = Callable[[str], Optional[Path]]
