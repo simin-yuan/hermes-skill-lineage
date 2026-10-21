@@ -15,8 +15,12 @@ edit, or a curator consolidation — the plugin stores:
 - the skill's content fingerprint before and after the write;
 - the sources that were in the same session before that write: the text the user
   typed, tool results (a fetched page, a file), and other skills that were read;
-- the features used to link a source to the added lines (`shingle` overlap,
-  anchors such as URLs, identifiers and quoted strings, path/context proximity);
+- how each source is linked to the added lines: `strong` (at least 3 shared
+  8-word shingles), `anchor` (a shared operative token — URL or host, a shell
+  command with its first argument, a package install, a file path, an environment
+  variable, an IP or e-mail address — that is not common across sources), or
+  `context` (seen in the session, nothing measurable shared; recorded, not followed
+  by default);
 - a `seq → prev_hash → hash` chain over all of the above.
 
 Text is never stored. Hashes are keyed, so two installs cannot be compared
@@ -58,10 +62,15 @@ python -m pytest -q
 hermes plugins validate .
 ```
 
-Measured on `33631f8` on 2026-10-21 (Hermes `e06df9c2ea`, Python 3.11.16 and
-3.14.7): **46 passed, 1 skipped**. The skipped one is the end-to-end suite; it
-skips with a printed reason when Hermes cannot be imported by the running
-interpreter. `hermes plugins validate .` passes with no warnings.
+Hermes itself runs on Python 3.14 only, so the end-to-end suite (a real Hermes agent
+against a local fake model server: foreground writes, the background review fork,
+curator consolidation and the Tool Search bridge) runs on 3.14 and skips with a
+printed reason elsewhere. The plugin code and unit tests are standard-library only.
+
+Measured on 2026-10-21 against Hermes `3166d61`: Python 3.14 **56 passed**;
+Python 3.11 **48 passed, 1 skipped** (the end-to-end module). Earlier, on `33631f8`
+with Hermes `e06df9c2ea` on Windows: 46 passed, 1 skipped. `hermes plugins validate`
+passes with no warnings.
 
 Manual end-to-end smoke run on Hermes `e06df9c2ea` (2026-10-21, isolated
 `HERMES_HOME`, plugin enabled, one real session that created a skill through
@@ -76,6 +85,37 @@ and `head` all returned as documented. Raw output in
 - It does not prove a source *caused* an edit. The link is computed from shared
   content plus session order; `report` exists because some lines have no
   traceable origin and that should be visible rather than smoothed over.
+
+## Related work
+
+Lineage for agent memory already exists; this plugin applies it to skills on a
+shipping agent. Neighbouring work, and how this differs:
+
+- **MemLineage** (Ouyang & Hou, [arXiv:2605.14421](https://arxiv.org/abs/2605.14421))
+  introduced signed, Merkle-logged agent memory with a weighted derivation graph and
+  an action gate. Independent implementations exist
+  ([amurlaniakea/memlineage](https://github.com/amurlaniakea/memlineage),
+  [dan0nchik/memlineage-provenance-loss](https://github.com/dan0nchik/memlineage-provenance-loss)).
+  The latter shows, on a research harness, that lineage is lost when an agent
+  refines or merges skills, and that recording everything the model saw over-taints
+  clean skills. No code from these projects is used here.
+- **Attacks on self-written skills** motivate this: SkillJack
+  ([arXiv:2608.03509](https://arxiv.org/abs/2608.03509)), trajectory poisoning of
+  self-evolving skills ([arXiv:2608.05563](https://arxiv.org/abs/2608.05563)),
+  self-poisoning skill libraries ([arXiv:2608.25776](https://arxiv.org/abs/2608.25776)).
+- **Other layers on Hermes**: `memory-rewind` keeps version history,
+  `skill-integrity` detects changed skill files, `memory-shield` gates memory writes,
+  `provenance-gate` checks claimed user decisions. [runxhq/runx](https://github.com/runxhq/runx)
+  signs receipts of what ran and who allowed it. Hermes #139096 asks for the
+  *install* source of a skill; #141990 / #142018 export *session* lineage
+  (compression chain and subagent trees). This plugin records *content* lineage:
+  which session evidence the lines of a skill came from.
+
+What is specific here: it runs on Hermes' real skill lifecycle — foreground writes,
+the background review fork and curator consolidation — and its `anchor` links target
+paraphrased payloads that keep their operative tokens. How often `strong`, `anchor`
+and `context` tracing are right is being measured; numbers will be added here with
+their sample sizes, not before.
 
 ## Disclosure
 
