@@ -183,5 +183,16 @@ def install_key_ex(directory: Path) -> tuple[bytes, str]:
         return data, reason
 
 
-def install_key(directory: Path) -> bytes:
-    return install_key_ex(directory)[0]
+def read_key(directory: Path) -> tuple[bytes | None, str]:
+    """Read-only: (key, "") or (None, why). Never creates or replaces the key file — for the CLI,
+    which must not change the ruler it measures with."""
+    path = directory / KEY_FILE
+    if not path.exists():
+        return None, "no hashing key yet (nothing has been recorded in this profile)"
+    try:
+        text = path.read_bytes().decode("ascii").strip()
+    except (OSError, UnicodeDecodeError) as exc:
+        return None, f"hashing key unreadable ({type(exc).__name__})"
+    if not _KEY_HEX.fullmatch(text):
+        return None, f"hashing key malformed ({path.stat().st_size} bytes)"
+    return bytes.fromhex(text), ""

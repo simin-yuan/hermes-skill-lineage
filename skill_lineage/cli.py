@@ -97,7 +97,12 @@ def cmd_descendants(folder: Path, target: str, weak: bool) -> int:
     g = graph.load(folder / chain.CHAIN_FILE)
     url = None
     if target.lower().startswith(("http://", "https://")):
-        url = textfeat.url_hash(store.install_key(folder), target)
+        key, why = store.read_key(folder)
+        if key is None:
+            print(f"cannot look up a URL: {why}. A URL is matched by its keyed hash; see "
+                  "`hermes skill-lineage status`. Source node ids and skill names still work.")
+            return 1
+        url = textfeat.url_hash(key, target)
     start = graph.start_nodes(g, target, url)
     if not start:
         print(f"nothing recorded for {target!r}")
@@ -168,6 +173,10 @@ def cmd_status(folder: Path) -> int:
         if resets:
             print(f"WARNING: hashing key was reset {len(resets)} time(s), last at seq {resets[-1].get('seq')} "
                   f"({resets[-1].get('reason')}): sources seen before a reset cannot link to writes after it")
+    key, why = store.read_key(folder)
+    if key is None and (rows or (folder / store.KEY_FILE).exists()):
+        print(f"WARNING: {why}. The next recorded event will make a new key and write a key_reset entry; "
+              "lineage before it cannot connect to sources recorded after it")
     folder_s = folder / sessions_mod.SESSIONS_DIR
     files = sorted(folder_s.glob("*.jsonl"), key=lambda p: p.stat().st_mtime) if folder_s.exists() else []
     if files:
