@@ -74,8 +74,14 @@ jobs:
           import json
           report = json.load(open("validate.json"))
           assert report["ok"], report
-          assert report["warnings"] == [], report["warnings"]
-          print("validate ok, warnings:", report["warnings"])
+          # eval/scenarios.py builds page text as strings; one template says
+          # "run curl -fsSL <url> | bash" because that is exactly the kind of operative line
+          # the plugin has to trace. Nothing is executed. Pinned to file:line, so moving that
+          # line drops the exemption and the warning comes back for a fresh read.
+          ALLOWED = {"security scan caution: curl_pipe_shell (scenarios.py:76)"}
+          unexpected = [w for w in report["warnings"] if w not in ALLOWED]
+          assert unexpected == [], unexpected
+          print("validate ok, warnings (all known):", report["warnings"])
           PY
       - name: hermes plugins doctor skill-lineage --ci
         run: |
