@@ -79,3 +79,17 @@ def test_context_edges_capped_in_rows():
     many = [edges.Edge("context", f"n{i}") for i in range(60)]
     rows, dropped = edges.rows(many)
     assert len(rows) == 50 and dropped == 10
+
+
+def test_boilerplate_shingles_become_common(tmp_path):
+    counts = edges.AnchorCounts(tmp_path)
+    bp = "Please read the contributing guide before you open a pull request against the main branch."
+    sh = textfeat.shingles(KEY, bp)
+    for i in range(4):
+        counts.add_source(f"n{i}", set(), sh | textfeat.shingles(KEY, f"unique page {i} " * 3))
+    assert counts.common_shingles(sh) == set()
+    counts.add_source("n4", set(), sh)
+    assert counts.common_shingles(sh) == sh
+    assert (tmp_path / edges.SHINGLE_SKETCH).stat().st_size == edges.SKETCH_DEPTH * edges.SKETCH_WIDTH * 2
+    found, _ = edges.compute(KEY, "- " + bp, "", [src("Some page. " + bp)], set(), counts.common_shingles(sh))
+    assert {e.kind for e in found} == {"context"}

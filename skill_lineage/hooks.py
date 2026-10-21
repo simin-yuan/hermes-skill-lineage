@@ -173,11 +173,11 @@ class Tracker:
         anchors = {textfeat.keyed_hex(key, s) for s in strings}
         url_hashes = {textfeat.keyed_hex(key, s) for s in strings if s.startswith("url:")}
         url_hashes |= {textfeat.url_hash(key, u) for u in urls}
+        shingles = textfeat.shingles(key, text)
         sessions.record(directory, session_id, sessions.Seen(
-            kind="src", node=node, cls=cls, tool=tool, shingles=textfeat.shingles(key, text),
-            anchors=anchors, urls=url_hashes))
+            kind="src", node=node, cls=cls, tool=tool, shingles=shingles, anchors=anchors, urls=url_hashes))
         if cls in edges.CONTEXT_CLASSES:
-            edges.AnchorCounts(directory).add_source(node, anchors)
+            edges.AnchorCounts(directory).add_source(node, anchors, shingles)
 
     def _record_read(self, session_id: str, args: Any) -> None:
         if isinstance(args, str):
@@ -203,7 +203,8 @@ class Tracker:
         directory = self._directory()
         key = self._key(directory)
         seen = sessions.load(directory, session_id) if session_id else []
-        common = edges.AnchorCounts(directory).common()
+        counts = edges.AnchorCounts(directory)
+        common = counts.common()
         bodies: list[dict] = []
         for name in names:
             before_fp, before_texts = before.get(name, (None, {}))
@@ -212,8 +213,10 @@ class Tracker:
                 continue  # failed or no-op call: nothing changed on disk
             added = skills.added_text(before_texts, after_texts)
             before_all = "\n".join(before_texts[rel] for rel in sorted(before_texts))
+            common_sh = counts.common_shingles(textfeat.shingles(key, added))
             found, orphans = edges.compute(key, added, before_all,
-                                           [s for s in seen if s.node != f"skill:{name}@{before_fp}"], common)
+                                           [s for s in seen if s.node != f"skill:{name}@{before_fp}"], common,
+                                           common_sh)
             edge_rows, dropped = edges.rows(found)
             if before_fp:
                 edge_rows.insert(0, {"k": "prev", "from": f"skill:{name}@{before_fp}"})
