@@ -1,0 +1,42 @@
+# skill-lineage — manual end-to-end smoke run
+# date: 2026-10-21T05:05:58Z
+# host: Windows 11, Hermes venv python Python 3.11.16
+# isolated HERMES_HOME: C:/Users/Simon/AppData/Local/Temp/hermes-smoke (deleted after the run; not the live profile)
+# plugin: adopted from the repo at revision 33631f8adb10, enabled via 'hermes plugins enable skill-lineage'
+# trigger: one real one-shot session (`hermes --yolo -z ...`) that called skill_manage(create, name=smoke-probe)
+
+$ hermes skill-lineage status
+skill-lineage 0.1.0 loaded (requires_hermes >=0.21.5 satisfied, or Hermes would not have loaded it)
+data folder: C:\Users\Simon\AppData\Local\Temp\hermes-smoke\plugin-data\skill-lineage
+chain: 2 entries, head seq 2 at 2026-10-21T05:05:43Z; 1 skill versions; last skill write 2026-10-21T05:05:43Z
+sessions: 2 files, newest source or read recorded 0 min ago
+
+$ hermes skill-lineage trace smoke-probe
+skill smoke-probe @00f513a524  (seq 2, 2026-10-21T05:05:43Z)
+  <- src:user:26edf93a648a10f25ff…  [user]   [strong, 5 shingles; into skill smoke-probe @00f513a524  (seq 2, 2]
+
+$ hermes skill-lineage descendants smoke-probe
+no skill versions reached (try --weak)
+
+$ hermes skill-lineage report
+no skill versions with untraceable operative tokens
+
+$ hermes skill-lineage verify
+INTACT: 2 entries, head seq 2 hash c3a26bf92e9a9325138689ada4a519be1e0ff341d33b6246833200ebfb0d8c0c
+note: without a head hash recorded elsewhere this checks internal consistency only
+
+$ hermes skill-lineage head
+seq 2 hash c3a26bf92e9a9325138689ada4a519be1e0ff341d33b6246833200ebfb0d8c0c
+
+$ hermes skill-lineage verify --head <value printed by head>
+(head reported: hash c3a26bf92e9a9325138689ada4a519be1e0ff341d33b6246833200ebfb0d8c0c )
+INTACT: 2 entries, head seq 2 hash c3a26bf92e9a9325138689ada4a519be1e0ff341d33b6246833200ebfb0d8c0c
+given head found; 0 entries follow it
+
+$ hermes skill-lineage descendants src:user:26edf93a648a10f25ffd7f2b5e64f54d   # the source id printed by trace
+LIVE skill smoke-probe @00f513a524  (seq 2, 2026-10-21T05:05:43Z)   [strong, 5 shingles]
+
+$ hermes skill-lineage trace smoke-probe --weak
+skill smoke-probe @00f513a524  (seq 2, 2026-10-21T05:05:43Z)
+  <- src:user:26edf93a648a10f25ff…  [user]   [strong, 5 shingles; into skill smoke-probe @00f513a524  (seq 2, 2]
+

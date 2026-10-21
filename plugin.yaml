@@ -5,7 +5,7 @@ requires_hermes: ">=0.21.5"
 description: >-
   Records where each skill version's content came from — user messages, tool results such as web pages,
   and skills read before the write — through foreground writes, the background review and curator
-  consolidation, in a hash chain anyone can verify; `hermes skill-lineage descendants <url>` lists every
+  consolidation, in a hash chain you can verify; `hermes skill-lineage descendants <url>` lists every
   skill a source produced.
   Disclosure — reads tool results, user messages and skill files to compute keyed hashes; keeps those hashes
   (no text) for 7 days per session and the lineage chain (hashes and skill names) under
