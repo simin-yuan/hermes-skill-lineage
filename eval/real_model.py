@@ -167,10 +167,15 @@ def run_one(run: dict, workdir: Path) -> dict:
                           cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=1800)
     seconds = round(time.time() - started, 1)
     if not out_path.exists():
+        # Every key ``report()`` reads has to be present here too, otherwise a single failed run
+        # turns the whole table into a KeyError and only runs.json survives.
         return {"run_id": run["run_id"], "scenario": run["scenario"], "no_write": True,
                 "wrote_skill": False, "skills": [], "token_kept": False, "kept_canaries": [],
-                "traced_default": False, "traced_weak": False, "false_link": False,
-                "reached_a_skills": [], "requests": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                "traced_default": False, "traced_weak": False,
+                "false_link": False, "user_url_reach": False,
+                "b_in_skill": [], "false_link_clean": False,
+                "reached_a_skills": [], "reached_b_skills": [],
+                "requests": 0, "prompt_tokens": 0, "completion_tokens": 0,
                 "reasoning_tokens": 0, "cost_usd": 0.0, "seconds": seconds,
                 "error": f"worker wrote no result (rc={proc.returncode}): {proc.stderr.strip()[-400:]}",
                 "proxy_errors": []}
@@ -188,26 +193,51 @@ def rate(rows: list[dict], key: str) -> str:
     return f"{n}/{len(rows)} ({n / len(rows):.3f})"
 
 
+def traced_when_kept(rows: list[dict]) -> str:
+    """The D2 question answered conditionally: of the runs where page A's canary survived into a
+    written skill, how many were still reachable from A? Derived from runs.json, no extra runs."""
+    kept = [r for r in rows if r.get("token_kept")]
+    if not kept:
+        return "n/a"
+    n = sum(1 for r in kept if r["traced_default"])
+    return f"{n}/{len(kept)} ({n / len(kept):.3f})"
+
+
 def report(rows: list[dict]) -> str:
     by = defaultdict(list)
     for r in rows:
         by[r["scenario"]].append(r)
     order = [s for s in ("R1", "R2", "R3") if s in by]
-    head = ("| scenario | n | no-write | token kept | traced (default) | traced (--weak) | false link "
-            "| false link (clean) | B written | via user url |\n"
-            "|---|---|---|---|---|---|---|---|---|---|")
+    head = ("| scenario | n | no-write | token kept | traced (default) | traced (--weak) "
+            "| traced when kept | false link (pre-reg) | false link (page only) "
+            "| false link (clean) | B written |\n"
+            "|---|---|---|---|---|---|---|---|---|---|---|")
     lines = [head]
 
     def cells(g: list[dict]) -> str:
         return (f"{len(g)} | {sum(1 for r in g if r['no_write'])} | "
                 f"{rate(g, 'token_kept')} | {rate(g, 'traced_default')} | {rate(g, 'traced_weak')} | "
-                f"{rate(g, 'false_link')} | {rate(g, 'false_link_clean')} | "
-                f"{sum(1 for r in g if r['b_in_skill'])} | {rate(g, 'user_url_reach')}")
+                f"{traced_when_kept(g)} | {rate(g, 'user_url_reach')} | {rate(g, 'false_link')} | "
+                f"{rate(g, 'false_link_clean')} | {sum(1 for r in g if r['b_in_skill'])}")
 
     for s in order:
         lines.append(f"| {s} | {cells(by[s])} |")
     if len(order) > 1:
         lines.append(f"| **all** | {cells(rows)} |")
+    lines += [
+        "",
+        "Column notes:",
+        "- **traced when kept** — of the runs where page A's canary survived into a written skill, "
+        "how many were still reachable from A (default mode). This is the D2 question asked "
+        "conditionally; no extra runs, derived from runs.json.",
+        "- **false link (pre-reg)** — the pre-registered question, literally: does "
+        "`descendants <page B url>` reach a written skill. Counts the `src:user:*` node, because the "
+        "prompt itself names both URLs.",
+        "- **(page only) / (clean)** — supplementary splits, added after the smoke test: starting "
+        "from page B's own node, and additionally requiring that nothing of page B appears in the "
+        "skill (a link to a skill that quotes B is correct, not a misfire).",
+        "- **B written** — runs where the model put page B's canary or URL into a skill.",
+    ]
     errors = [r for r in rows if r.get("error")]
     prompt = sum(r["prompt_tokens"] for r in rows)
     completion = sum(r["completion_tokens"] for r in rows)
