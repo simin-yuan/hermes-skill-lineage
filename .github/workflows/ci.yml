@@ -1,0 +1,87 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      hermes_ref:
+        description: Hermes commit or branch for the hermes-tools job (empty = the pinned commit)
+        required: false
+        default: ""
+  schedule:
+    - cron: "17 5 * * 1"  # weekly, Monday 05:17 UTC: run the Hermes job against Hermes main
+
+# The pinned Hermes commit appears once, in the hermes-tools matrix below.
+jobs:
+  unit:
+    if: github.event_name != 'schedule'
+    name: unit (${{ matrix.os }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install pytest
+      - name: unit tests (Hermes not installed, end-to-end tests skip)
+        run: python -m pytest -v
+      - name: labelled evaluation (seed 2, pre-registered floors)
+        run: python eval/run_eval.py --seed 2 --per-label 100
+
+  hermes-tools:
+    name: hermes-tools (${{ matrix.ref }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ${{ fromJSON(github.event_name == 'schedule' && '["main"]' || (inputs.hermes_ref != '' && inputs.hermes_ref != null) && format('["{0}"]', inputs.hermes_ref) || '["c5a3c0f8767a72203363d249add14142dbcf3cc7"]') }}
+    env:
+      SKILL_LINEAGE_REQUIRE_E2E: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: skill-lineage
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python -m pip install uv
+      - name: install Hermes at ${{ matrix.ref }} on Python 3.14
+        run: |
+          git clone --filter=blob:none https://github.com/NousResearch/hermes-agent.git hermes-agent
+          cd hermes-agent
+          git checkout ${{ matrix.ref }}
+          echo "Hermes commit: $(git rev-parse HEAD)"
+          uv venv -p 3.14 "$RUNNER_TEMP/hermes-venv"
+          # Hermes declares its test tools in the "dev" dependency group.
+          VIRTUAL_ENV="$RUNNER_TEMP/hermes-venv" uv pip install -e . --group dev
+          echo "$RUNNER_TEMP/hermes-venv/bin" >> "$GITHUB_PATH"
+      - name: all tests, end-to-end included
+        working-directory: skill-lineage
+        run: python -m pytest -v
+      - name: hermes plugins validate (no private-import warnings)
+        run: |
+          export HERMES_HOME="$RUNNER_TEMP/validate-home"
+          hermes plugins validate skill-lineage
+          hermes plugins validate --json skill-lineage > validate.json
+          python - <<'PY'
+          import json
+          report = json.load(open("validate.json"))
+          assert report["ok"], report
+          assert report["warnings"] == [], report["warnings"]
+          print("validate ok, warnings:", report["warnings"])
+          PY
+      - name: hermes plugins doctor skill-lineage --ci
+        run: |
+          export HERMES_HOME="$RUNNER_TEMP/doctor-home"
+          mkdir -p "$HERMES_HOME/plugins/skill-lineage"
+          cp -r skill-lineage/plugin.yaml skill-lineage/__init__.py skill-lineage/skill_lineage \
+            skill-lineage/LICENSE skill-lineage/NOTICE "$HERMES_HOME/plugins/skill-lineage/"
+          hermes plugins enable skill-lineage
+          hermes plugins doctor skill-lineage --ci
