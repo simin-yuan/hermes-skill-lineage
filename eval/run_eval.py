@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "__fixtures__"))
 
 from skill_lineage import chain, graph, store, textfeat  # noqa: E402
 from skill_lineage.hooks import Tracker  # noqa: E402

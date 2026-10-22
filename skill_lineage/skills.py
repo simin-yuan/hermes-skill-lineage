@@ -1,7 +1,11 @@
 """Where a skill lives, its fingerprint, and its text.
 
-Skills are found through Hermes' public skill API (``tools.skills_tool.skill_search_dirs`` /
-``locate_skill``); outside Hermes (unit tests) a plain search under ``$HERMES_HOME/skills`` is used.
+Skills are found by scanning the directories Hermes keeps them in — the active
+profile's ``skills`` dir, every ``profiles/*/skills``, a project's
+``.hermes/skills`` and ``skills.external_dirs`` — and reading the ``name:`` field
+of each ``SKILL.md``. Nothing from the Hermes package is imported, so a release
+bump cannot break the lookup and the catalog validator has nothing to warn
+about (rule 9: public surfaces only).
 """
 
 from __future__ import annotations
@@ -15,40 +19,124 @@ from typing import Callable, Optional
 JUNK = {".DS_Store", "Thumbs.db", "desktop.ini"}
 MAX_TEXT_BYTES = 2 * 1024 * 1024  # per file read for comparison; larger files are fingerprinted only
 
-
-def _hermes_locate(name: str) -> Optional[Path]:
-    from tools.skills_tool import locate_skill, skill_search_dirs
-
-    roots, _active = skill_search_dirs()
-    error, skill_dir, skill_md = locate_skill(name, None, roots)
-    if error or skill_md is None or skill_dir is None:
-        return None
-    return Path(skill_dir)
+# Directories that hold SKILL.md files we must never treat as the live one:
+# archived skills, skill-hub downloads, vendored repos, and tooling noise.
+SKIP_PARTS = {".archive", ".hub", "_nested_repos", "node_modules", ".git"}
 
 
-def _plain_locate(name: str) -> Optional[Path]:
+def _hermes_base() -> Path:
     home = os.environ.get("HERMES_HOME")
-    if not home:
-        return None
-    root = Path(home) / "skills"
-    if not root.exists():
-        return None
-    for skill_md in root.rglob("SKILL.md"):
-        if ".archive" in skill_md.parts or ".hub" in skill_md.parts:
+    return Path(home) if home else Path.home() / ".hermes"
+
+
+def _external_dirs(base: Path) -> list[Path]:
+    """``skills.external_dirs`` read from config.yaml with a line scanner.
+
+    PyYAML is not a declared dependency, and the block is a flat list of paths,
+    so a scanner beats taking a dependency for it. Anything it cannot parse is
+    skipped — a missed external dir costs a lookup, a bad parse must not crash.
+    """
+    config = base / "config.yaml"
+    if not config.is_file():
+        return []
+    try:
+        text = config.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    found: list[str] = []
+    in_block = False
+    block_indent = 0
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        if skill_md.parent.name == name:
-            return skill_md.parent
-    return None
+        indent = len(line) - len(line.lstrip())
+        if not in_block:
+            if stripped.startswith("external_dirs:"):
+                rest = stripped.split(":", 1)[1].strip()
+                if rest.startswith("["):
+                    found += [v.strip().strip("'\"") for v in rest.strip("[]").split(",") if v.strip()]
+                    break
+                if not rest:  # block form, list follows on indented lines
+                    in_block = True
+                    block_indent = indent
+            continue
+        if stripped.startswith("- "):
+            value = stripped[2:].strip().strip("'\"")
+            if value:
+                found.append(value)
+        elif indent <= block_indent:
+            break
+    out: list[Path] = []
+    for raw in found:
+        path = Path(os.path.expandvars(raw)).expanduser()
+        if not path.is_absolute():
+            path = base / path
+        out.append(path)
+    return out
+
+
+def _roots() -> list[Path]:
+    """Every directory that may contain SKILL.md, most specific first."""
+    base = _hermes_base()
+    candidates: list[Path] = [base / "skills", Path.cwd() / ".hermes" / "skills"]
+    profiles = base / "profiles"
+    if profiles.is_dir():
+        try:
+            candidates += [p / "skills" for p in sorted(profiles.iterdir()) if p.is_dir()]
+        except OSError:
+            pass
+    candidates += _external_dirs(base)
+    seen: list[Path] = []
+    for path in candidates:
+        try:
+            if path.is_dir() and path not in seen:
+                seen.append(path)
+        except OSError:
+            continue
+    return seen
+
+
+def _declared_name(skill_md: Path) -> str:
+    """The ``name:`` field from the frontmatter, or '' when absent/unreadable."""
+    try:
+        head = skill_md.read_text(encoding="utf-8", errors="replace")[:4000]
+    except OSError:
+        return ""
+    lines = head.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return ""
+    for line in lines[1:60]:
+        stripped = line.strip()
+        if stripped == "---":
+            break
+        if stripped.lower().startswith("name:"):
+            return stripped.split(":", 1)[1].strip().strip("'\"")
+    return ""
 
 
 def locate(name: str) -> Optional[Path]:
-    """Live directory of skill ``name`` or None (missing, archived, ambiguous)."""
+    """Live directory of skill ``name`` or None (missing, archived, ambiguous).
+
+    ``name`` may carry a category prefix (``category/name``); the leaf is what
+    identifies the skill, which is how Hermes names them in tool calls.
+    """
     if not name:
         return None
-    try:
-        return _hermes_locate(name)
-    except ImportError:
-        return _plain_locate(name)
+    leaf = name.replace("\\", "/").rstrip("/").split("/")[-1]
+    if not leaf:
+        return None
+    for root in _roots():
+        try:
+            candidates = sorted(root.rglob("SKILL.md"))
+        except OSError:
+            continue
+        for skill_md in candidates:
+            if any(part in SKIP_PARTS for part in skill_md.parts):
+                continue
+            if skill_md.parent.name == leaf or _declared_name(skill_md) == leaf:
+                return skill_md.parent
+    return None
 
 
 Locator = Callable[[str], Optional[Path]]

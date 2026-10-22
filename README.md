@@ -67,10 +67,12 @@ against a local fake model server: foreground writes, the background review fork
 curator consolidation and the Tool Search bridge) runs on 3.14 and skips with a
 printed reason elsewhere. The plugin code and unit tests are standard-library only.
 
-Measured on 2026-10-21 against Hermes `3166d61`: Python 3.14 **59 passed**;
-Python 3.11 **51 passed, 1 skipped** (the end-to-end module). Earlier, on `33631f8`
-with Hermes `e06df9c2ea` on Windows: 46 passed, 1 skipped. `hermes plugins validate`
-passes with no warnings.
+Measured at v0.1.4 (2026-10-22): **84 passed, 1 skipped** on Python **3.14.7** and on
+Python **3.11.16** — the end-to-end module skips in both, printing its reason (no Hermes
+install on the machine that produced these numbers). Earlier: 60 passed, 1 skipped at
+`8df4bcb`; 59 passed at `3166d61` with Hermes on 3.14; 46 passed, 1 skipped at `33631f8`
+with Hermes `e06df9c2ea` on Windows. `hermes plugins validate .` reports no failures and
+no warnings at v0.1.4.
 
 Manual end-to-end smoke run on Hermes `e06df9c2ea` (2026-10-21, isolated
 `HERMES_HOME`, plugin enabled, one real session that created a skill through
@@ -85,6 +87,36 @@ and `head` all returned as documented. Raw output in
 - It does not prove a source *caused* an edit. The link is computed from shared
   content plus session order; `report` exists because some lines have no
   traceable origin and that should be visible rather than smoothed over.
+- It covers skills only. Changes to `MEMORY.md` or to any external memory
+  backend are not recorded.
+- A skill archived by the curator, and a skill file edited between sessions
+  without `skill_manage`, do not reach the graph yet. Hermes' skill ledger and
+  the curator's `run.json` are not documented APIs; a weekly CI job runs against
+  Hermes `main`, so a format change fails a build instead of going silent.
+- Without an anchor, `verify` is an internal-consistency check and nothing more: it shows
+  the chain is self-consistent, not that it was not truncated. An empty chain therefore
+  prints `EMPTY`, never `INTACT`. Recording `hermes skill-lineage head --json` somewhere
+  off this machine (another repository, or an OpenTimestamps stamp of the printed hash)
+  and passing it back with `verify --head HASH` is the recommended setup, not an optional
+  extra — it is the only check that can tell a truncated chain from a fresh one.
+- A skill write the plugin cannot locate on disk leaves no chain entry at all: locating is
+  a directory scan, so a name that resolves somewhere outside the scanned roots produces
+  no version line, and a failed write is indistinguishable from a no-op.
+- If the pre-call snapshot is missing (a reload between the two hooks, or a post that
+  arrives alone), the whole existing body counts as new text, so a one-line patch can pick
+  up a strong link to an unrelated page seen in that session.
+- Tool arguments are never treated as a source, and user turns in non-user platforms are
+  skipped: text dictated through a `delegate_task` goal, a cron prompt or a curator run
+  reaches the graph with no recorded origin.
+- `report` calls a version untraceable only when the session saw external content *and* the
+  body carries an anchor (a URL, host, path or command). Prose with no anchor is never
+  flagged, even when nothing in the session could have produced it.
+- A tool result is kept up to 2,000,000 characters from its start. Text copied from the tail
+  of a longer result can only reach a `context` edge, and its anchors are then reported as
+  untraceable — the one direction in which the report raises a false alarm.
+- The source de-duplication index (`nodes.idx`) is not rebuilt from the chain. After a chain
+  is emptied or rolled back, a source seen again is not written back, so its edges point at
+  an id the chain no longer defines.
 
 ## Related work
 
@@ -136,6 +168,12 @@ tuning followed it. Full output: `eval/results-seed2.json`, `eval/results-seed4-
 | **strong + anchor (v0.1.3, seed 4)** | 200/200 | 100/100 | 0/100 | 100/100 | **0/400** | 0/200 | 0/200 | **1.000** |
 | everything seen in the session (either version) | 200/200 | 100/100 | 100/100 | 100/100 | 400/400 | 200/200 | 200/200 | 0.385 |
 
+Re-run at v0.1.4 on 2026-10-22 against the same seeds: every cell above is unchanged, so the
+numbers carry over. v0.1.4 changed one edge rule — overlap is now only discounted between
+sources of the same class, so a user message quoting a page no longer cancels the page's link.
+That case is not among the generated labels; `tests/test_shared_text.py` covers it instead,
+including the controls (a lone page, and two pages sharing a template sentence).
+
 Seed 4 rows are the default configuration; the 0/400 on unrelated pages comes from the rule that
 only text unique to one source counts toward a strong edge. Under v0.1.2, pairs of generated pages
 that share template sentences were linked through that shared wording.
@@ -152,6 +190,13 @@ that is the measurement below.
 run, `deepseek-v4-flash` at default temperature, seed 3. Protocol, prompts and scenario wording are
 identical between the batches; the only change is the plugin build. Raw records and per-run evidence:
 `eval/real/2026-10-21/` (v0.1.2, `37132da`) and `eval/real/2026-10-21-v013/` (v0.1.3, `e147b7e`).
+
+The per-run transcripts (`*.result.json`, 1.8 MB) are not in this repository. They are model
+output rather than source, and the plugin validator scans every text file in the tree, so their
+shell-shaped payloads read as plugin code. They are archived as a separate dataset together with
+`eval/real/MANIFEST.json`, which lists every file with its sha256 and the plugin commit it was
+produced from; the dataset DOI is recorded in the release notes for v0.1.4. The protocol, the
+scenario wording, `runs.json` and each run's `REPORT.md` stay here — those are what a re-run needs.
 
 | | v0.1.2 | v0.1.3 | Fisher exact, two-sided |
 |---|---|---|---|

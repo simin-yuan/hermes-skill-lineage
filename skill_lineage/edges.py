@@ -133,19 +133,28 @@ def compute(key: bytes, added: str, before_all: str, seen: list[Seen], common: s
     edges: list[Edge] = []
     explained: set[str] = set(textfeat.anchors(key, before_all))
     saw_external = any(item.cls == "ext" for item in seen)
-    # Discriminative overlap: text that two sources of the session both contain cannot tell which one
-    # it came from, so between sources (pages, tool results, user messages) only overlap unique to one
-    # source counts. Skill reads are not part of this: a skill read in the session may itself derive
-    # from a page, and subtracting it would cut the page's own link.
+    # Discriminative overlap: text that two sources *of the same class* both contain cannot tell
+    # which one it came from, so only overlap unique to one source counts. Classes are kept apart
+    # on purpose: a user turn quoting a page ("here is the section I pasted") is how a page gets
+    # into a skill, and subtracting across classes erased both sides — the page lost its strong
+    # edge and the user turn, which never gets one, kept nothing. Skill reads are not part of this
+    # either: a skill read in the session may itself derive from a page, and subtracting it would
+    # cut the page's own link.
     sources = [item for item in seen if item.kind != "read"]
     for item in seen:
         prefix = "read-" if item.kind == "read" else ""
         explained |= item.anchors  # a token found in anything the session saw has a traceable origin
+        if item.cls == "user":
+            # A user turn is context, never origin (the eval's user-dictated floor is 0/200), so it
+            # gets no edge even when it repeats a page word for word. It still counts as "seen" for
+            # the orphan test above.
+            continue
         own_sh, own_an = item.shingles, item.anchors
         if item.kind != "read":
-            others = [o for o in sources if o is not item]
-            own_sh = own_sh - set().union(*(o.shingles for o in others)) if others else own_sh
-            own_an = own_an - set().union(*(o.anchors for o in others)) if others else own_an
+            peers = [o for o in sources if o is not item and o.cls == item.cls]
+            if peers:
+                own_sh = own_sh - set().union(*(o.shingles for o in peers))
+                own_an = own_an - set().union(*(o.anchors for o in peers))
         sh = len(added_sh & own_sh)
         an = len(added_an & own_an)
         if sh >= STRONG_MIN:

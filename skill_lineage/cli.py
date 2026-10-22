@@ -133,7 +133,14 @@ def cmd_report(folder: Path) -> int:
 
 
 def cmd_head(folder: Path, as_json: bool) -> int:
-    seq, digest = chain.head(folder / chain.CHAIN_FILE)
+    try:
+        seq, digest = chain.head(folder / chain.CHAIN_FILE)
+    except chain.TornTail as exc:
+        if as_json:
+            print(json.dumps({"seq": exc.seq, "hash": exc.hash, "torn": True, "ts": store.iso()}))
+        else:
+            print(f"seq {exc.seq} hash {exc.hash} (torn trailing line: this is the last entry that parses)")
+        return 1
     if as_json:
         print(json.dumps({"seq": seq, "hash": digest, "ts": store.iso()}))
     else:
@@ -175,6 +182,13 @@ def cmd_status(folder: Path) -> int:
         if resets:
             print(f"WARNING: hashing key was reset {len(resets)} time(s), last at seq {resets[-1].get('seq')} "
                   f"({resets[-1].get('reason')}): sources seen before a reset cannot link to writes after it")
+        repairs = [r for r in rows if r.get("kind") == chain.REPAIR_KIND]
+        if repairs:
+            last_repair = repairs[-1]
+            print(f"WARNING: chain write was repaired {len(repairs)} time(s): a trailing line did not parse "
+                  f"(last at seq {last_repair.get('seq')}, {last_repair.get('skipped_bytes')} byte(s) skipped, "
+                  f"resumed after seq {last_repair.get('resumed_from_seq')}). Run 'hermes skill-lineage verify' "
+                  "to see where the chain breaks")
     key, why = store.read_key(folder)
     if key is None and (rows or (folder / store.KEY_FILE).exists()):
         print(f"WARNING: {why}. The next recorded event will make a new key and write a key_reset entry; "

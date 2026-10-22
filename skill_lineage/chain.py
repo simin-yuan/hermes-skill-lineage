@@ -13,6 +13,23 @@ from pathlib import Path
 
 GENESIS = "0" * 64
 CHAIN_FILE = "chain.jsonl"
+REPAIR_KIND = "repair"
+
+
+class TornTail(Exception):
+    """The last line(s) do not parse. Carries the last entry that did.
+
+    A torn line is what a crash mid-write, a truncated copy or a plain text
+    editor leaves behind. The reader already skipped it; the writer used to
+    give up on the whole write and keep doing so on every later write, with
+    nothing in ``status`` to say so.
+    """
+
+    def __init__(self, seq: int, digest: str, lines: list[bytes]) -> None:
+        super().__init__(f"{len(lines)} torn trailing line(s) after seq {seq}")
+        self.seq = seq
+        self.hash = digest
+        self.lines = lines
 
 
 def canonical(obj: dict) -> bytes:
@@ -23,36 +40,77 @@ def entry_hash(entry: dict) -> str:
     return hashlib.sha256(canonical({k: v for k, v in entry.items() if k != "hash"})).hexdigest()
 
 
-def _last_line(path: Path) -> bytes:
+def _scan_tail(path: Path) -> tuple[int, str, list[bytes]]:
+    """(seq, hash, torn trailing lines) of the last entry that parses.
+
+    Reading stops at the first parseable line from the end, so a non-empty torn
+    list means the tail itself is damaged — the case the writer must survive.
+    """
     if not path.exists():
-        return b""
-    with open(path, "rb") as handle:
-        handle.seek(0, 2)
-        size = handle.tell()
-        block, data = 4096, b""
-        while size > 0:
-            step = min(block, size)
-            size -= step
-            handle.seek(size)
-            data = handle.read(step) + data
-            lines = [line for line in data.split(b"\n") if line.strip()]
-            if len(lines) >= 2 or (lines and size == 0):
-                return lines[-1]
-        return b""
+        return 0, GENESIS, []
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return 0, GENESIS, []
+    lines = [line for line in data.split(b"\n") if line.strip()]
+    torn: list[bytes] = []
+    for raw in reversed(lines):
+        try:
+            entry = json.loads(raw.decode("utf-8"))
+            return int(entry["seq"]), str(entry["hash"]), torn
+        except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+            torn.append(raw)
+    return 0, GENESIS, torn
 
 
 def head(path: Path) -> tuple[int, str]:
-    """(seq, hash) of the last entry, or (0, GENESIS) for an empty chain."""
-    line = _last_line(path)
-    if not line:
-        return 0, GENESIS
-    entry = json.loads(line.decode("utf-8"))
-    return int(entry["seq"]), str(entry["hash"])
+    """(seq, hash) of the last entry, or (0, GENESIS) for an empty chain.
+
+    Raises ``TornTail`` when the trailing line does not parse, so callers that
+    only print a head can say so instead of reporting a stale one as current.
+    """
+    seq, digest, torn = _scan_tail(path)
+    if torn:
+        raise TornTail(seq, digest, torn)
+    return seq, digest
+
+
+def _ends_with_newline(path: Path) -> bool:
+    """True for a missing or empty file: nothing to separate the next line from."""
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, 2)
+            if handle.tell() == 0:
+                return True
+            handle.seek(-1, 2)
+            return handle.read(1) == b"\n"
+    except OSError:
+        return True
 
 
 def append(path: Path, bodies: list[dict], ts: str) -> list[dict]:
-    """Append entries after the current head. The caller holds the chain lock."""
-    seq, prev = head(path)
+    """Append entries after the current head. The caller holds the chain lock.
+
+    A torn trailing line does not stop the write. The damaged line is left in
+    place — ``verify`` must still be able to point at it — and a ``repair``
+    entry records how much was skipped and where the chain resumed, so the
+    damage stays visible in ``status`` instead of turning into silence.
+    """
+    torn: list[bytes] = []
+    try:
+        seq, prev = head(path)
+    except TornTail as exc:
+        seq, prev, torn = exc.seq, exc.hash, exc.lines
+    if torn:
+        skipped = b"\n".join(torn)
+        bodies = [{
+            "kind": REPAIR_KIND,
+            "reason": "torn trailing line did not parse as JSON; write resumed after the last entry that did",
+            "skipped_lines": len(torn),
+            "skipped_bytes": len(skipped),
+            "skipped_sha256": hashlib.sha256(skipped).hexdigest(),
+            "resumed_from_seq": seq,
+        }] + list(bodies)
     written = []
     for body in bodies:
         seq += 1
@@ -62,6 +120,10 @@ def append(path: Path, bodies: list[dict], ts: str) -> list[dict]:
         prev = entry["hash"]
         written.append(entry)
     with open(path, "ab") as handle:
+        if not _ends_with_newline(path):
+            # The torn line has no terminator; without this the repair entry
+            # would be glued onto it and be unreadable too.
+            handle.write(b"\n")
         handle.write(b"".join(json.dumps(e, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
                               for e in written))
     return written
