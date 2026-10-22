@@ -74,6 +74,27 @@ install on the machine that produced these numbers). Earlier: 60 passed, 1 skipp
 with Hermes `e06df9c2ea` on Windows. `hermes plugins validate .` reports no failures and
 no warnings at v0.1.4.
 
+Getting there is worth recording, because one earlier commit had the reason backwards.
+
+The 120 real-model transcripts under `eval/real/**/*.result.json` are model output, not
+source, and the validator scans every text file in the tree, so the shell-shaped payloads
+those runs produced read as plugin code. They are archived as a dataset instead (see the
+real-model section); `eval/real/MANIFEST.json` lists every file with its sha256 and the
+plugin commit it came from.
+
+`eval/__fixtures__/` holds the synthetic scenario generator, and the directory name is not
+decoration: `plugin_guard_context` downgrades findings under a test tree and recognises
+`__fixtures__` at any depth. The generator is fixture data — its strings are scenarios, not
+commands — so it belongs under that rule rather than behind an exclusion of our own.
+
+The rule-9 warning was a correction. Commit `33631f8` removed the imports of
+`tools.skills_tool` and `18dc08d` then put them back, justifying it with "these are on
+Hermes' own public list (`hermes_cli/plugin_validate_private_imports.py`)". They are not:
+that file's allowlist does not contain `skills_tool`. The warning was right and the commit
+message was wrong. `locate()` now resolves skill roots by scanning — the active profile's
+`skills`, `profiles/*/skills`, a project's `.hermes/skills` and `skills.external_dirs`,
+matching on the frontmatter `name` — with no import from the Hermes package at all.
+
 Manual end-to-end smoke run on Hermes `e06df9c2ea` (2026-10-21, isolated
 `HERMES_HOME`, plugin enabled, one real session that created a skill through
 `skill_manage`): passed — `status`, `trace`, `descendants`, `report`, `verify`
