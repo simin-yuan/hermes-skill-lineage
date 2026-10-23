@@ -102,6 +102,65 @@ def test_every_pattern_is_linear_on_hostile_input(label):
     assert measured < 1.0, f"{pattern} on a pathological {label} input took {measured:.3f}s"
 
 
+# Three shapes per pattern, each built from that pattern's own structure rather than from "a.", so a
+# rewrite that trades one weakness for another is caught instead of passing on a single input. The
+# 4x size step is what separates linear from quadratic: linear time grows ~4x, a nested quantifier
+# grows ~16x, and the assertion below fails well before that.
+HOSTILE = {
+    "word_run": ("_WORD", "a", 1),
+    "word_dashes": ("_WORD", "-", 1),
+    "word_dots": ("_WORD", "a.", 2),
+    "url_schemes": ("_URL", "http://", 7),
+    "url_hosts": ("_URL", "http://example.com/", 19),
+    "url_query": ("_URL", "http://example.com/?", 1),
+    "ip_quads": ("_IP", "1.1.1.1.", 8),
+    "ip_digits": ("_IP", "1", 1),
+    "ip_octets": ("_IP", "255.", 4),
+    "env_vars": ("_ENV", "$A", 2),
+    "env_subshell": ("_ENV", "$( ", 3),
+    "path_slashes": ("_PATH", "/", 1),
+    "path_dot_slash": ("_PATH", "./", 2),
+    "path_segments": ("_PATH", "a" * 40 + "/", 41),
+    "command_backticks": ("_COMMAND", "`", 1),
+    "command_subshell": ("_COMMAND", "$( ", 3),
+    "install_repeats": ("_INSTALL", "pip install ", 12),
+    "install_spaced": ("_INSTALL", "$( ", 3),
+    "email_dots": ("_EMAIL", "a.", 2),
+    "email_at": ("_EMAIL", "a@", 2),
+    "email_at_dots": ("_EMAIL", "@.", 2),
+}
+
+
+def _repeat_expr(unit: str, width: int, size: float) -> str:
+    return repr(unit) + " * %d" % int(size // width)
+
+
+@pytest.mark.parametrize("label", sorted(HOSTILE))
+def test_each_shape_grows_linearly_across_three_sizes(label):
+    """0.25 MB -> 0.5 MB -> 1 MB of one hostile shape; time must grow with the data, not its square."""
+    pattern, unit, width = HOSTILE[label]
+    small = time_pattern(pattern, _repeat_expr(unit, width, 250_000))
+    mid = time_pattern(pattern, _repeat_expr(unit, width, 500_000))
+    large = time_pattern(pattern, _repeat_expr(unit, width, 1_000_000))
+
+    assert large < 2.0, f"{pattern} on 1 MB of {label!r} took {large:.3f}s"
+    if small > 0.02:  # below ~20 ms the measurement is dominated by start-up noise
+        assert large / small < 8.0, (
+            f"{pattern} on {label!r} grew x{large / small:.1f} for x4 data "
+            f"({small:.3f}s -> {mid:.3f}s -> {large:.3f}s): no longer linear")
+
+
+def test_the_slowest_measured_shape_has_headroom():
+    """``_COMMAND`` on repeated ``"$( "`` is the slowest linear case: 0.42 s per MB locally.
+
+    It is linear, so 2 MB — the cap on a tool result — stays around 0.85 s, and the whole
+    ``anchor_strings`` pipeline stays inside the 5 s bar. Recorded as its own case so the trend,
+    not only the absolute number, is visible if this ever changes.
+    """
+    measured = time_pattern("_COMMAND", _repeat_expr("$( ", 3, 1_000_000))
+    assert measured < 2.0, f"_COMMAND on 1 MB of '$( ' took {measured:.3f}s"
+
+
 def test_bounded_email_still_matches_real_addresses():
     assert "email:bob.smith+x@example.co.uk" in textfeat.anchor_strings("write to Bob.Smith+x@example.co.uk.")
     assert "email:ops@canary.example" in textfeat.anchor_strings("mail ops@canary.example")
@@ -113,12 +172,8 @@ def test_local_part_longer_than_rfc_limit_is_not_an_anchor(local):
     """Documented narrowing: RFC 5321 caps the local part at 64 octets.
 
     The old ``\\b[\\w.+-]+@`` matched a 70-character local part; the bounded form does not. Such a
-    string is not a deliverable address, and matching it is what cost quadratic time.
-
-    This is one of the two differences the twelve-sample comparison turned up. The other is that an
-    ASCII ``-``, ``+`` or ``.`` immediately before an address is now kept as the first character of
-    the local part, because ``\\b`` used to start the match after the separator while the lookbehind
-    does not; see ``test_a_separator_before_an_address_is_kept_in_the_anchor``.
+    string is not a deliverable address, and matching it is what cost quadratic time. This is the
+    only behavioural difference the twelve-sample comparison turns up at v0.1.7.
     """
     assert textfeat.anchor_strings(f"contact {local}@example.com") == set()
     allowed = 64 * "y" + "@example.com"
@@ -126,11 +181,13 @@ def test_local_part_longer_than_rfc_limit_is_not_an_anchor(local):
 
 
 @pytest.mark.parametrize("lead", ["-", "+", "."])
-def test_a_separator_before_an_address_is_kept_in_the_anchor(lead):
-    """The second difference between the old and the new pattern, recorded so it stays visible.
+def test_a_separator_before_an_address_is_not_part_of_it(lead):
+    """A leading ``-``, ``+`` or ``.`` is dropped, so the address keeps the form the old pattern gave.
 
-    ``\\b`` started the match after ``-``, ``+`` or ``.``; the lookbehind has no such anchor, so the
-    separator becomes the first character of the local part, which RFC 5321 atext allows. It is the
-    same token to a reader, and it is the whole of the difference on that input.
+    The bounded pattern's lookbehind cannot tell a separator from the first character of a local
+    part, so ``anchor_strings`` strips it. Without that, ``-name@example.com`` recorded at v0.1.6
+    would hash differently from the same address in a chain written by v0.1.4, and one address would
+    count as two.
     """
-    assert textfeat.anchor_strings(f"write to {lead}bob@example.com") == {f"email:{lead}bob@example.com"}
+    assert textfeat.anchor_strings(f"write to {lead}bob@example.com") == {"email:bob@example.com"}
+    assert textfeat.anchor_strings(f"write to {lead * 3}bob@example.com") == {"email:bob@example.com"}

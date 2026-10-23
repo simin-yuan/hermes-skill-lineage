@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.8 — 2026-10-23
+
+- Behaviour: the bounded pattern is kept as written, and a leading `.`, `+` or `-` is now removed
+  where the match is used, so `-name@example.com` records `name@example.com` exactly as 0.1.4 did.
+  Without that, an address next to a separator hashed one way in an old chain and another way now,
+  and one address counted as two. Re-compared against 0.1.4 on 13 samples: 2 differ, both a local
+  part longer than 64 octets, which is the only intended difference (RFC 5321; matching it is what
+  cost quadratic time). Post-processing costs nothing measurable — `anchor_strings` on 2 MB of
+  `"a."` is 0.631 s with it, 0.664 s without.
+- Coverage: every pattern in `textfeat` now has three hostile shapes of its own — 21 in total —
+  each measured at 0.25, 0.5 and 1 MB in a fresh process with a hard timeout, and the 4x step must
+  stay linear. Nothing is super-linear; the slowest is `_COMMAND` on repeated `"$( "` at 0.42 s per
+  MB (1.0 MB 0.42 s, 2.1 MB 0.85 s, 4.2 MB 1.76 s — x4.2 for x4 data), so the e-mail pattern is no
+  longer the expensive one. 43 tests in the file, 16 s.
+
 ## 0.1.7 — 2026-10-23
 
 - Fixed: a user turn is an origin again for text the user dictated. 0.1.4 dropped user turns from

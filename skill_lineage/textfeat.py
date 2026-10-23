@@ -21,6 +21,10 @@ _URL = re.compile(r"\b(?:https?|ftp)://[^\s\"'<>`)\]}]+", re.IGNORECASE)
 # \b, so a long run of word characters cannot be re-scanned from every offset. The unbounded
 # `\b[\w.+-]+@` form was quadratic on hostile input: 40 KB of "a." took 4.2 s and 200 KB took 108 s,
 # while results inside a tool call are capped at 2 MB and `re` cannot be interrupted.
+# The lookbehind cannot tell a separator from the first character of a local part, so a leading ".", "+"
+# or "-" is removed where the match is used (anchor_strings): "-name@example.com" is the same address to
+# a reader as "name@example.com", and the older pattern produced the second form, so anchors recorded
+# before this version stay comparable instead of splitting one address into two hashes.
 _EMAIL = re.compile(r"(?<![\w.+-])[\w.+-]{1,64}@[\w-]+(?:\.[\w-]+)+\b")
 _IP = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _ENV = re.compile(r"\$\{?([A-Z_][A-Z0-9_]{2,})\}?|\b([A-Z][A-Z0-9_]{3,})=")
@@ -82,7 +86,9 @@ def anchor_strings(text: str) -> set[str]:
             if "." in host:
                 found.add("host:" + host)
     for match in _EMAIL.finditer(text):
-        found.add("email:" + match.group(0).lower())
+        address = match.group(0).lower().lstrip("+-.")
+        if address:  # a local part made only of separators is not an address
+            found.add("email:" + address)
     for match in _IP.finditer(text):
         parts = match.group(0).split(".")
         if all(0 <= int(p) <= 255 for p in parts) and match.group(0) not in ("0.0.0.0", "127.0.0.1"):
