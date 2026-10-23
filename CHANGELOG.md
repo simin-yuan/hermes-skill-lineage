@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.7 — 2026-10-23
+
+- Fixed: a user turn is an origin again for text the user dictated. 0.1.4 dropped user turns from
+  the edge pass outright while keeping their text out of the same-class discount, so every dictated
+  skill ended up with no origin at all and `test_foreground_verbatim_unrelated_and_user_rule`
+  (both `[plain]` and `[stream]`) failed on the `hermes-tools` job from that release on. The
+  recorded smoke run in `tests/smoke-2026-10-21.txt` shows what the plugin did before: a strong
+  edge from `src:user:…` into the skill ("5 shingles; into skill smoke-probe"). The eval is
+  unchanged at 240 scenarios — N3 0/80, precision 1.0, every pre-registered floor met — because
+  what keeps a page from being credited for dictated text is the same-class discount, not the
+  removal of the user turn.
+- Tests: `test_a_user_turn_is_the_origin_of_what_the_user_typed` and
+  `test_a_page_is_not_credited_for_user_dictated_text` replace one test that asserted a stronger
+  rule than the design does (`user turns produce no edge at all`).
+
 ## 0.1.6 — 2026-10-23
 
 - Guards: the 2 MB reproducer now asserts under 5 s rather than 2 s. The bounded pattern alone is
