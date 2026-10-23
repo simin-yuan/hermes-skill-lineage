@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.6 — 2026-10-23
+
+- Guards: the 2 MB reproducer now asserts under 5 s rather than 2 s. The bounded pattern alone is
+  0.05 s on the machine these numbers come from, but the whole `anchor_strings` pass is 0.6-1.2 s
+  because seven other patterns scan the same text, so a slower runner could have reached the old
+  bar. The old pattern needs 143 s at 200 KB, so the guard still separates the two by orders of
+  magnitude.
+- Recorded the second output difference between the old and the new e-mail pattern, which 0.1.5
+  described as the only one: an ASCII `-`, `+` or `.` directly before an address is now the first
+  character of the local part instead of being left out, because `` anchored after it and the
+  lookbehind does not. RFC 5321 atext allows that character, and it is the same token to a reader.
+
 ## 0.1.5 — 2026-10-23
 
 - Fixed quadratic-time e-mail regex in `anchor_strings` (reported by @teknium1 in review of

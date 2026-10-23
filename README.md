@@ -70,12 +70,12 @@ against a local fake model server: foreground writes, the background review fork
 curator consolidation and the Tool Search bridge) runs on 3.14 and skips with a
 printed reason elsewhere. The plugin code and unit tests are standard-library only.
 
-Measured at v0.1.5 (2026-10-23): **105 passed, 1 skipped** on Python **3.14.7** and on
-Python **3.11.16** — the end-to-end module skips in both, printing its reason (no Hermes
-import available to that interpreter). Earlier: 84 passed, 1 skipped at v0.1.4;
+Measured at v0.1.6 (2026-10-23): **108 passed, 1 skipped** on Python **3.11.16** and on Python
+**3.14.7** — the end-to-end module skips in both, printing its reason (no Hermes import available
+to that interpreter). Earlier: 105 passed, 1 skipped at v0.1.5; 84 passed, 1 skipped at v0.1.4;
 60 passed, 1 skipped at `8df4bcb`; 59 passed at `3166d61` with Hermes on 3.14; 46 passed,
 1 skipped at `33631f8` with Hermes `e06df9c2ea` on Windows. `hermes plugins validate .`
-reports no failures and no warnings at v0.1.5.
+reports no failures and no warnings at v0.1.6.
 
 Getting there is worth recording, because one earlier commit had the reason backwards.
 
