@@ -53,7 +53,10 @@ hermes plugins install skill-lineage   # from the catalog, once listed
 ```
 
 Requires Hermes >= 0.21.5. No dependencies outside the standard library. No
-network calls.
+network calls. The only import from Hermes itself is
+`hermes_constants.get_hermes_home()` — a public surface, imported inside the
+function at call time — with an `HERMES_HOME` fallback for releases that predate
+it, so one process serving several profiles looks in the right one.
 
 ## Tests
 
@@ -67,12 +70,12 @@ against a local fake model server: foreground writes, the background review fork
 curator consolidation and the Tool Search bridge) runs on 3.14 and skips with a
 printed reason elsewhere. The plugin code and unit tests are standard-library only.
 
-Measured at v0.1.4 (2026-10-22): **84 passed, 1 skipped** on Python **3.14.7** and on
+Measured at v0.1.5 (2026-10-23): **105 passed, 1 skipped** on Python **3.14.7** and on
 Python **3.11.16** — the end-to-end module skips in both, printing its reason (no Hermes
-install on the machine that produced these numbers). Earlier: 60 passed, 1 skipped at
-`8df4bcb`; 59 passed at `3166d61` with Hermes on 3.14; 46 passed, 1 skipped at `33631f8`
-with Hermes `e06df9c2ea` on Windows. `hermes plugins validate .` reports no failures and
-no warnings at v0.1.4.
+import available to that interpreter). Earlier: 84 passed, 1 skipped at v0.1.4;
+60 passed, 1 skipped at `8df4bcb`; 59 passed at `3166d61` with Hermes on 3.14; 46 passed,
+1 skipped at `33631f8` with Hermes `e06df9c2ea` on Windows. `hermes plugins validate .`
+reports no failures and no warnings at v0.1.5.
 
 Getting there is worth recording, because one earlier commit had the reason backwards.
 
@@ -93,7 +96,13 @@ Hermes' own public list (`hermes_cli/plugin_validate_private_imports.py`)". They
 that file's allowlist does not contain `skills_tool`. The warning was right and the commit
 message was wrong. `locate()` now resolves skill roots by scanning — the active profile's
 `skills`, `profiles/*/skills`, a project's `.hermes/skills` and `skills.external_dirs`,
-matching on the frontmatter `name` — with no import from the Hermes package at all.
+matching on the frontmatter `name` — with no import of the skill tooling.
+
+As of v0.1.5 there is exactly one import from the Hermes package, and it is on the
+allowlist: `hermes_constants.get_hermes_home()` (see `_PUBLIC` in the same validator file).
+It is imported inside the function so the value is resolved per call, and a release without
+it falls back to `HERMES_HOME` — that fallback is the only case where the launch profile's
+home is used.
 
 Manual end-to-end smoke run on Hermes `e06df9c2ea` (2026-10-21, isolated
 `HERMES_HOME`, plugin enabled, one real session that created a skill through

@@ -8,6 +8,8 @@ name, a skill only present under ``profiles/*/skills``, a project-local
 """
 
 import os
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -112,3 +114,46 @@ def test_no_private_hermes_imports():
     assert "import tools" not in source
     assert "from agent." not in source
     assert "from hermes_cli" not in source
+
+
+def _fake_constants(home):
+    """A stand-in for ``hermes_constants``; the plugin imports only ``get_hermes_home`` from it."""
+    module = types.ModuleType("hermes_constants")
+    setattr(module, "get_hermes_home", lambda: home)
+    return module
+
+
+def test_hermes_home_comes_from_get_hermes_home_not_the_env(tmp_path, monkeypatch):
+    """One process, several profiles: the env names the launch profile, the helper names this one."""
+    launch = tmp_path / "launch"
+    session = tmp_path / "session-profile"
+    launch.mkdir()
+    want = make_skill(session, "skills/profiled")
+    monkeypatch.setenv("HERMES_HOME", str(launch))
+    monkeypatch.setitem(sys.modules, "hermes_constants", _fake_constants(session))
+    monkeypatch.chdir(tmp_path)  # no project-local .hermes/skills may answer for it
+    assert skills.locate("profiled") == want
+
+
+def test_hermes_home_is_read_per_call_not_cached_at_import(tmp_path, monkeypatch):
+    """A value cached at import would still pin the first profile; the helper is asked every call."""
+    first, second = tmp_path / "one", tmp_path / "two"
+    one = make_skill(first, "skills/alpha")
+    two = make_skill(second, "skills/beta")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setitem(sys.modules, "hermes_constants", _fake_constants(first))
+    assert skills.locate("alpha") == one
+    assert skills.locate("beta") is None
+    monkeypatch.setitem(sys.modules, "hermes_constants", _fake_constants(second))
+    assert skills.locate("beta") == two
+    assert skills.locate("alpha") is None
+
+
+def test_missing_helper_falls_back_to_the_environment(tmp_path, monkeypatch):
+    """Older Hermes: no ``get_hermes_home``; the launch profile is still searched."""
+    home = tmp_path / "legacy"
+    want = make_skill(home, "skills/legacy")
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setitem(sys.modules, "hermes_constants", types.ModuleType("hermes_constants"))
+    monkeypatch.chdir(tmp_path)
+    assert skills.locate("legacy") == want

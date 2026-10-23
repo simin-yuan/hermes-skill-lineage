@@ -17,7 +17,11 @@ SHINGLE_TOKENS = 8
 
 _WORD = re.compile(r"\w+", re.UNICODE)
 _URL = re.compile(r"\b(?:https?|ftp)://[^\s\"'<>`)\]}]+", re.IGNORECASE)
-_EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b")
+# The local part is bounded (RFC 5321 caps it at 64 octets) and anchored behind a lookbehind instead of
+# \b, so a long run of word characters cannot be re-scanned from every offset. The unbounded
+# `\b[\w.+-]+@` form was quadratic on hostile input: 40 KB of "a." took 4.2 s and 200 KB took 108 s,
+# while results inside a tool call are capped at 2 MB and `re` cannot be interrupted.
+_EMAIL = re.compile(r"(?<![\w.+-])[\w.+-]{1,64}@[\w-]+(?:\.[\w-]+)+\b")
 _IP = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _ENV = re.compile(r"\$\{?([A-Z_][A-Z0-9_]{2,})\}?|\b([A-Z][A-Z0-9_]{3,})=")
 _PATH = re.compile(r"(?<![\w/:])(?:~|\.{1,2})?(?:/[\w.@-]+){2,}/?|\b[A-Za-z]:\\(?:[\w.@ -]+\\)*[\w.@-]+")

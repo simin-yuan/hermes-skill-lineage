@@ -2,10 +2,11 @@
 
 Skills are found by scanning the directories Hermes keeps them in — the active
 profile's ``skills`` dir, every ``profiles/*/skills``, a project's
-``.hermes/skills`` and ``skills.external_dirs`` — and reading the ``name:`` field
-of each ``SKILL.md``. Nothing from the Hermes package is imported, so a release
-bump cannot break the lookup and the catalog validator has nothing to warn
-about (rule 9: public surfaces only).
+``.hermes/skills`` and ``skills.external_dirs`` — and reading the ``name:``
+field of each ``SKILL.md``. The one Hermes import is
+``hermes_constants.get_hermes_home()``, which is on the public surface plugin
+authors are told to use (rule 9); it is imported inside the function, at call
+time, and an older Hermes without it falls back to ``HERMES_HOME``.
 """
 
 from __future__ import annotations
@@ -25,8 +26,21 @@ SKIP_PARTS = {".archive", ".hub", "_nested_repos", "node_modules", ".git"}
 
 
 def _hermes_base() -> Path:
-    home = os.environ.get("HERMES_HOME")
-    return Path(home) if home else Path.home() / ".hermes"
+    """The active profile's Hermes home, resolved on every call.
+
+    ``HERMES_HOME`` names the *launch* profile. When one Hermes process serves several profiles, a
+    write in another profile's session would be looked up in the wrong tree, so prefer
+    ``hermes_constants.get_hermes_home()``, which honours the per-session profile override.
+    ``hermes_constants`` is a documented public surface for plugins (catalog rule 9); the import is
+    inside the function so both the value and the module are resolved at call time, and an older
+    Hermes without it falls back to the environment.
+    """
+    try:
+        from hermes_constants import get_hermes_home  # public surface (catalog rule 9)
+    except ImportError:  # Hermes predating the helper: the launch profile is all we can see
+        home = os.environ.get("HERMES_HOME")
+        return Path(home) if home else Path.home() / ".hermes"
+    return Path(get_hermes_home())
 
 
 def _external_dirs(base: Path) -> list[Path]:
