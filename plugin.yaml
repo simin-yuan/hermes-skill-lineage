@@ -1,6 +1,6 @@
 name: skill-lineage
 version: 0.1.8
-author: "Simin (Simon) Yuan"
+author: "Simin Yuan"
 requires_hermes: ">=0.21.5"
 description: >-
   Records where each skill version's content came from — user messages, tool results such as web pages,
