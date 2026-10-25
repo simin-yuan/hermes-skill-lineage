@@ -6,7 +6,7 @@ below are fixed; the run is reported as it comes out, including failures.
 This file covers two batches under one protocol: the v0.1.2 baseline (the body below) and the
 v0.1.3 re-run (its own section before the report format).
 
-## Protocol (Simon, 2026-10-21 — verbatim)
+## Protocol (Simin Yuan, 2026-10-21 — verbatim)
 
 ```
 Real-model run protocol (pre-registered 2026-10-21; do not change after the first call)
