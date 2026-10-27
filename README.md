@@ -273,6 +273,21 @@ columns exist to separate these from genuine misfires.
 the unrelated skill the curator scenario asks for. `--weak` means "written in a session that read this
 source", which is a weaker claim than "contains its content" and should be read that way.
 
+## Conventions
+
+Listed under the [Hermes plugin verdict convention v0.1](https://github.com/simin-yuan/hermes-provenance-gate/blob/main/docs/verdict-convention.md)
+as out of scope for two of its three rules, and in scope for the third:
+
+| Convention rule | This plugin |
+|---|---|
+| `rule_key` grammar | not applicable — never returns a `pre_tool_call` directive, so there is no approval to key |
+| observe/act switch | not applicable — no action to observe |
+| evidence row | already satisfied: every chain entry carries `seq`, `ts` (ISO-8601 UTC, `Z`), `kind`, `prev`, `hash`; `tool` on source entries; sessions are recorded as files and keyed hashes, never as raw text |
+
+The record shape here is a hash chain, and it is the plugin's product rather than a log about one.
+Changing it to look more like the other three would break every existing chain for no gain in
+readability, so it is documented instead of reshaped.
+
 ## Disclosure
 
 Reads tool results, user messages and skill files to compute keyed hashes. Keeps
