@@ -7,6 +7,27 @@ To audit a skill that rewrites itself, you need to answer two questions
 afterwards: *which* text went into it, and *whether* the record of that is
 intact. This plugin answers both, per skill version.
 
+## Modes
+
+`observe` records; `act` enforces. One key sets that for the whole family, and each plugin still
+answers to its own key first.
+
+| Plugin | Own key | Shared key `HERMES_GUARD_MODE` | In `observe` | In `act` |
+|---|---|---|---|---|
+| degeneracy-guard | `DEGENERACY_GUARD_MODE` — `observe` \| `act` | `observe` / `act` | same detection and incident record; replaces nothing, asks nothing | flagged output replaced with a notice; a loop-shaped tool call goes to the approval gate |
+| provenance-gate | `PROVENANCE_GATE_MODE` — `observe` \| `ask` \| `block` | `observe` / `act` (= `block`); `ask` stays `ask` | writes recorded as `would_block`, nothing refused | the write is refused with instructions |
+| skill-lineage | none | **no effect here** — records only, nothing to refuse | records every skill write | records every skill write |
+
+Precedence: a plugin's own key wins, `HERMES_GUARD_MODE` is the fallback, and with neither set each
+plugin keeps its own default. A spelling a key does not recognise is not an opinion — it falls
+through to the next source rather than being guessed at, so an empty or misspelled setting never
+changes a posture on its own.
+
+This plugin is the third row. It has nothing to refuse, so it has no mode and `HERMES_GUARD_MODE`
+does nothing here: set it to `observe`, set it to `act`, misspell it — the record is identical. It is
+said out loud rather than left unsaid, because silence would let someone setting the family key
+believe they had turned this plugin off.
+
 ## What it records
 
 For every skill write — a foreground `skill_manage` call, a background review
