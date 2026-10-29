@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 — 2026-10-30
+
+**`HERMES_GUARD_MODE` has no effect here, and the README now says so instead of leaving it to be
+discovered.** This plugin records lineage; it never refuses anything, so there is no posture for a
+family mode to set. Reading the key and doing nothing is the correct behaviour, not an omission —
+what would be wrong is staying silent about it while its two siblings honour the key.
+
+Documentation only: no runtime change in this release. Verified against Hermes `b4170e7` and current
+`main` on Python 3.11–3.14 — 139 tests pass with Hermes installed.
+
 ## 0.1.8 — 2026-10-23
 
 - Behaviour: the bounded pattern is kept as written, and a leading `.`, `+` or `-` is now removed
