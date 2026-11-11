@@ -325,3 +325,6 @@ changes a tool call.
 ## License
 
 Apache-2.0 — see `LICENSE` and `NOTICE`.
+---
+
+Part of the agent reliability toolkit → [agent-faultbench](https://github.com/simin-yuan/agent-faultbench)
